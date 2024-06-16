@@ -32,17 +32,10 @@ p_load("doParallel", # Allow parallel computation
 # Set a global option to disable dplyr::summarise() warnings when grouping. 
 options(dplyr.summarise.inform = FALSE)
 
-# Tracheophytes
-
-TracheoData <- read.csv("TracheophyteData.csv",row.names=1)
-SR.tracheo <- apply(TracheoData[,3:ncol(TracheoData)],1,sum)
-
-tracheoTraits <- read.csv("Traits_Tracheophytes_Fraction.csv",row.names = 1)
-
-TracheoEnv <- read.csv("EnvDataForTracheophytes.csv",row.names = 1)
-
-
 # --- Load the data --- #
+
+# Load the tracheophyte data
+TracheoOcc  <- read.csv("TracheophyteData.csv",row.names=1)
 
 # Load the tracheophyte tree
 # OPTION 1: Baker 2022 / A Comprehensive Phylogenomic Platform for Exploring the Angiosperm Tree of Life
@@ -52,8 +45,6 @@ ZanneTree <- read.tree(file = "PhyloTree/Zanne2014/Vascular_Plants_rooted.dated.
 # OPTION 3: Zuntini 2024 / Phylogenomics and the rise of the angiosperms.
 ZuntiniTree <- read.tree(file = "PhyloTree/Zuntini2024/Zuntini2024.tre")[[1]]
 
-# Load the TracheoOccurences
-TracheoOcc <- TracheoData
 
 #------------------------------#
 ##### ANGIOSPERM OCCURENCE #####
@@ -80,12 +71,9 @@ Gn_names <- sub("_.*","",Sp_names) %>%
 BakerTip <- BakerTree$tip.label
 ZanneTip <- ZanneTree$tip.label
 ZuntiniTip <- ZuntiniTree$tip.label
-  
-# Remove all the "'"
-ZuntiniTip <- gsub("'"," ",ZuntiniTip,fixed = T) 
-# Change "_" into " " 
-ZuntiniTip <- gsub("_"," ",ZuntiniTip,fixed = T) 
 
+  # -- Baker -- #
+  
 # Modify the BarkerTips :Only keep the species names (the 3-4 fields)
 # Split the data (Stop just after the species names and tranform into a dataframe
 BakerTip <- t(as.data.frame(str_split(BakerTip, "_", n = 5))) %>%
@@ -93,6 +81,13 @@ BakerTip <- t(as.data.frame(str_split(BakerTip, "_", n = 5))) %>%
   `colnames<-`(c("Order","Family","Genus","Specific_epithet","Sequence_ID")) %>%
   as.data.frame() %>%
   unite("Species",Genus:Specific_epithet, remove = F)  # Combine the genus and the specific epithet into a specie name
+
+  # -- Zuntini -- # 
+
+# Remove all the "'"
+ZuntiniTip <- gsub("'"," ",ZuntiniTip,fixed = T) 
+# Change "_" into " " 
+ZuntiniTip <- gsub("_"," ",ZuntiniTip,fixed = T) 
 
 # Modify the ZuntiniTip :Only keep the species names (the 3-4 fields)
 # Split the data (Stop just after the species names and tranform into a dataframe
@@ -102,6 +97,8 @@ ZuntiniTip <- as.data.frame(str_split_fixed(ZuntiniTip, " ", n = 6)) %>%
   # remove the ".sp"
   dplyr::filter(V4 != "sp.")  %>%
   unite("Species",V4:V5, remove = F)  # Combine the genus and the specific epithet into a specie name
+
+  # -- Zanne -- # 
 
 # Create a version with only the genus to find the percentage of overlap of the tree genuses with the genus of the species we have.
 Zanne_Gn_names <- sub("_.*","",ZanneTip) %>%
@@ -116,13 +113,15 @@ Sp_Found_Zuntini <- Sp_names[which(Sp_names %in% ZuntiniTip$Species)]  # %: 14.5
 Gn_Found_Zanne <- Gn_names[which(Gn_names %in% Zanne_Gn_names)] # %: 95 (length(Gn_Found_Zanne)/length(Gn_names))*100 
 Gn_Found_Baker <- Gn_names[which(Gn_names %in% BakerTip$Genus)] # %: 83 (length(Gn_Found_Baker)/length(Gn_names))*100 
 
+  # ! WE SELECT THE ZANNE TREE ! # 
+
 # ------------------------------------------------------------------------------------------------- #
 
 #----------------------------------#
 ##### PHYLOTREE MODIFICIATIONS #####
 #----------------------------------#
 
-  # We will have to change the tips of the liverworts and mosses to match with the new databases of occurence (BryophytesData OR FinalMatrixLv95_SynChangedV2)
+  # We will have to change the tips of the liverworts and mosses to match with the new databases of occurence (BryophytesData OR FinalMatrixLv95_SynChangedV3)
   # See treemodif for modification done. 
 
 # Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
@@ -131,6 +130,10 @@ Moss_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Moss"),Species)$Species
 Liver_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Liverwort"),Species)$Species
 
 # Load the data for further testing 
+
+  # BryophyteData is the dataframe in common with the tracheophytes for the Lee Analyses.
+  # FinalMatrix is the global bryophyte dataset with all our plots. 
+
 bryoData <- read.csv("BryophyteData.csv",row.names=1)
   # OR #
 bryoData <- read.csv("FinalMatrixLv95_SynChangedV3.csv",row.names=1)
@@ -293,9 +296,3 @@ Moss_Missing <- Moss_Tips[!Moss_Tips %in% intersect(Moss_Tips,Moss_Names)]
 
 # Save the new tree
 write.tree(phy = New_Moss_Tree, file = "timetree50mod-mossesV2.nwk")
-
-
-
-
-
-

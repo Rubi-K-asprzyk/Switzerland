@@ -39,18 +39,33 @@ p_load("vegan",
 
   #### . Data Preparation . ##### 
 
-# Bryophytes
+# -- Bryophytes -- # 
 
-bryoData <- read.csv("BryophyteData.csv",row.names=1)
-SR.bryo <- apply(bryoData[,5:ncol(bryoData)],1,sum)
-
-bryoEnv <- read.csv("EnvDataForBryophytes.csv",row.names=1)
-alti <- bryoEnv$mnt_mean
-
+# Load the datasets
+  # Occurence
+bryoData <- read.csv("BryophyteData.csv",row.names=1) 
+  # Traits
 bryoTraits <- read.csv("Bryophytes_Traits_SpRichness.csv",row.names=1)
+  # Environment Variables
+bryoEnv <- read.csv("EnvDataForBryophytes.csv",row.names=1) # mnt_mean was changed directly in the dataset to "z"
+alti <- bryoEnv$z # Modified to follow Flavien's script afterwards. 
+
+# Load the phylotrees
+Liver_Tree <- read.tree("timetree50mod-liverwortsV2.nwk")
+Mosses_Tree <- read.tree("timetree50mod-mossesV2.nwk")
+
+# -- Computation of the wanted Metrics -- #
+
+  # Species richness
+SR.bryo <- apply(bryoData[,5:ncol(bryoData)],1,sum)
+  # PD
+
+  # MPD
+
+# -- Split between Mosses and Liverworts -- #
 
 # Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
-Bryo_Names <- read.csv(file = "Bryophyte_Names.csv", row.names = 1)
+Bryo_Names <- read.csv(file = "Utilities/Bryophyte_Names.csv", row.names = 1)
 Moss_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Moss"),Species) %>% as.matrix()
 Liver_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Liverwort"),Species) %>% as.matrix()
 
@@ -65,63 +80,27 @@ mossData <- dplyr::select(bryoData,any_of(c(Bryo_Meta,Moss_Names)))
 Moss_Names <- colnames(mossData)[-c(1:4)]
 Liver_Names <- colnames(liverData)[-c(1:4)]
 
-#--------------------------#
-#####  Check Tree tips #####
-#--------------------------#
+# -- Tracheophytes -- # 
 
-# Load the phylotrees
-Liver_Tree <- read.tree("timetree50mod-liverworts.nwk")
-Mosses_Tree <- read.tree("timetree50mod-mosses.nwk")
-
-# Get the tips clean
-Liver_Tips <- Liver_Tree$tip.label %>% gsub("'","",.)
-Moss_Tips <- Mosses_Tree$tip.label %>% gsub("'","",.)  
-
-# Find the species present or not in each tree
-Int_Liver_Tips <-  base::intersect(Liver_Names,Liver_Tips)   # Found species present in the tree
-Miss_Liver_Tips <- Liver_Names[!Liver_Names %in% intersect(Liver_Tips,Liver_Names)] # Found species not present in the tree
-# Species present in the tree but not present in the communities
-Liver_Missing <- Liver_Tips[!Liver_Tips%in% intersect(Liver_Tips,Liver_Names)]
-
-Int_Moss_Tips <-  intersect(Moss_Tips,Moss_Names) # Found species present in the tree
-Miss_Moss_Tips <- Moss_Names[!Moss_Names %in% intersect(Moss_Tips,Moss_Names)] # Found species not present in the tree
-Moss_Missing <- Moss_Tips[!Moss_Tips %in% intersect(Moss_Tips,Moss_Names)] # Found species not present in the tree
-
-# Saving a bunch of things to create a Excel for Alain.
-write_csv(data.frame(Liver_Tips),"Liver_Tips.csv")
-write_csv(data.frame(Moss_Tips),"Moss_Tips.csv")
-write_csv(data.frame(Miss_Liver_Tips),"Miss_Liver_Tips.csv")
-write_csv(data.frame(Miss_Moss_Tips),"Miss_Moss_Tips.csv")
-write_csv(data.frame(Int_Liver_Tips),"Int_Liver_Tips.csv")
-write_csv(data.frame(Int_Moss_Tips),"Int_Moss_Tips.csv")
-write_csv(data.frame(Liver_Missing),"Liver_Missing.csv")
-write_csv(data.frame(Moss_Missing),"Moss_Missing.csv")
-write_csv(data.frame(Liver_Names),"Liver_Names.csv")
-write_csv(data.frame(Moss_Names),"Moss_Names.csv")
-
-# Tracheophytes
-
-TracheoData <- read.csv("TracheophyteData.csv",row.names=1)
-SR.tracheo <- apply(TracheoData[,3:ncol(TracheoData)],1,sum)
-
+# Load the datasets
+  # Occurence
+TracheoOcc <- read.csv("TracheophyteData.csv",row.names=1)
+  # Traits
 tracheoTraits <- read.csv("Traits_Tracheophytes_Fraction.csv",row.names = 1)
-
+  # Environment Variables
 TracheoEnv <- read.csv("EnvDataForTracheophytes.csv",row.names = 1)
 
-# --- Load the data --- #
-
-# Load the tracheophyte tree
-
+# Load the phylotrees
 # OPTION 2: Zanne 2014 / Three keys to the radiation of angiosperms into freezing environments
 ZanneTree <- read.tree(file = "PhyloTree/Zanne2014/Vascular_Plants_rooted.dated.tree")
 
+# -- Computation of the wanted Metrics -- #
 
-# Load the TracheoOccurences
-TracheoOcc <- TracheoData
+  # Species richness
+SR.tracheo <- apply(TracheoData[,3:ncol(TracheoData)],1,sum)
+  # PD
 
-#------------------------------#
-##### ANGIOSPERM OCCURENCE #####
-#------------------------------#
+  # MPD
 
 # --- Modify the data --- #
 
@@ -137,24 +116,6 @@ Sp_names <- gsub(".","_",Sp_names,fixed = T)
 # Keep only the genuses names
 Gn_names <- sub("_.*","",Sp_names) %>%
   unique() # Keep the genuses names
-
-# --- Find the percentage of overlap between the phylotree and the species we have.
-
-ZanneTip <- ZanneTree$tip.label
-
-# Find the species present in the tree
-Sp_Found_Zanne <- Sp_names[which(Sp_names %in% ZanneTip)] # %: 67.6  (length(Sp_Found_Zanne)/length(Sp_names))*100 
-
-# Remove the species in the community not present in the phylo trees. 
-
-# ------------------------------------------------------------------------------------------------- #
-
-
-
-
-
-
-
 
 
 #-------------------------#

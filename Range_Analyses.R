@@ -179,35 +179,40 @@ arrange_theme <- function() {
 # Message
 cat(rule(left = "- Theme set - ", line_col = "white", line = " ", col = "green"))
 
-# --- Load the data --- #
+  #### . Data Preparation . ##### 
 
-# Load the environmental mosses data
-Mosses_Data <- read.csv(file = "Bryophytes/Mosses_Total.csv")
+# -- Bryophytes -- # 
 
-# Load the environmental liverworts data
-Liverworts_Data <- read.csv(file = "Bryophytes/Liverworts_Total.csv")
-
-# Create a global "Bryophyte Data" by merging the Moss and Liverworts data
-Bryophytes_Data <- merge(Mosses_Data,Liverworts_Data)
-
-# Load the environmental tracheophyte data
-Tracheo_Data <- read.csv(file = "Angiosperm/Tracheo_Total.csv")
-
-# Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
-Bryo_Names <- read.csv(file = "Bryophytes/Bryophyte_Names.csv", row.names = 1)
-Moss_Names <- select(filter(Bryo_Names,Taxa == "Moss"),Species) %>% as.matrix()
-Liver_Names <- select(filter(Bryo_Names,Taxa == "Liverwort"),Species) %>% as.matrix()
-  
-# Load the environmental data (Tracheo). We load Tracheo data because we have more plots
-Env_Data <- read.csv(file = "Angiosperm/Env_Var_Tracheo.csv",row.names = 1)
+# Load the datasets
+  # Occurence
+bryoData <- read.csv("FinalMatrixLv95_SynChangedV3.csv",row.names=1) 
+  # Traits
+bryoTraits <- read.csv("Bryophytes_Traits_SpRichness.csv",row.names=1)
+  # Environment Variables
+bryoEnv <- read.csv("EnvDataForBryophytes.csv",row.names=1) # mnt_mean was changed directly in the dataset to "z"
 
 # Load the phylotrees
-Liver_Tree <- read.tree("Bryophytes/timetree50mod-liverworts.nwk")
-Mosses_Tree <- read.tree("Bryophytes/timetree50mod-mosses.nwk")
+Liver_Tree <- read.tree("timetree50mod-liverwortsV2.nwk")
+Mosses_Tree <- read.tree("timetree50mod-mossesV2.nwk")
 
-# Tree tips modifications 
-ggtree(Liver_Tree) + geom_tiplab() + ggplot2::xlim(0, 0.5)
-ggtree(Mosses_Tree) + geom_tiplab()
+# -- Split between Mosses and Liverworts -- #
+
+# Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
+Bryo_Names <- read.csv(file = "Utilities/Bryophyte_Names.csv", row.names = 1)
+Moss_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Moss"),Species) %>% as.matrix()
+Liver_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Liverwort"),Species) %>% as.matrix()
+
+# Extract the meta data names
+Bryo_Meta <- colnames(bryoData)[1:4]
+
+# Split the Occ_Data_Moss between Mosses and Liverworts
+liverData <- dplyr::select(bryoData,any_of(c(Bryo_Meta,Liver_Names)))
+mossData <- dplyr::select(bryoData,any_of(c(Bryo_Meta,Moss_Names)))
+
+# Get the names of the liverworts and mosses present
+Moss_Names <- colnames(mossData)[-c(1:4)]
+Liver_Names <- colnames(liverData)[-c(1:4)]
+
 
 # Message
 cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green"))
@@ -220,10 +225,9 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
 # Creation of a function to compute the phybeta-diversity indices.
 # Take as parameter : 
 # - Data : A dataframe containing the Occurrence data.
-# - Type : The type of data we are working on : "B" for bryophytes or "T" for tracheophytes. 
 # - Sp_names : A character vector of species names
 
-Beta_Phylo <- function(Data,Sp_names,Taxa = "M") {
+Beta_Phylo <- function(Data,Sp_names) {
   
   # ----- #
   
