@@ -2,6 +2,7 @@
 
 # Working directory
 setwd("~/Documents/PhD-Thesis/Research/Switzerland")
+setwd("/Users/thibault/Documents/PhD/Switzerland")
 
 #------------------------#
 ##### INITIALISATION #####
@@ -36,6 +37,8 @@ p_load("vegan",
        "caret"
 )
 
+library(ape)
+
 
   #### . Data Preparation . ##### 
 
@@ -51,8 +54,8 @@ bryoEnv <- read.csv("EnvDataForBryophytes.csv",row.names=1) # mnt_mean was chang
 alti <- bryoEnv$z # Modified to follow Flavien's script afterwards. 
 
 # Load the phylotrees
-Liver_Tree <- read.tree("timetree50mod-liverwortsV2.nwk")
-Mosses_Tree <- read.tree("timetree50mod-mossesV2.nwk")
+Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverwortsV2.nwk")
+Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mossesV2.nwk")
 
 # -- Computation of the wanted Metrics -- #
 
@@ -116,6 +119,28 @@ Sp_names <- gsub(".","_",Sp_names,fixed = T)
 # Keep only the genuses names
 Gn_names <- sub("_.*","",Sp_names) %>%
   unique() # Keep the genuses names
+
+#-------------------------#
+##### Species Richness #####
+#-------------------------#
+
+# Total Bryo
+SR.bryo <- data.frame(apply(bryoData[,5:ncol(bryoData)],1,sum))
+SR.bryo.thresh <- dplyr::filter(SR.bryo, SR.bryo > Thresh)
+# Number of plot lost : 
+nrow(SR.bryo) - nrow(SR.bryo.thresh)
+
+# Total moss
+SR.moss <- data.frame(apply(mossData[,5:ncol(mossData)],1,sum))
+SR.moss.thresh <- dplyr::filter(SR.moss, SR.moss > Thresh)
+# Number of plot lost : 
+nrow(SR.moss) - nrow(SR.moss.thresh)
+
+# Total liverworts
+SR.liver <- data.frame(apply(liverData[,5:ncol(liverData)],1,sum))
+SR.liver.thresh <- dplyr::filter(SR.liver, SR.liver > Thresh)
+# Number of plot lost : 
+nrow(SR.liver) - nrow(SR.liver.thresh)
 
 
 #-------------------------#

@@ -17,46 +17,11 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 suppressPackageStartupMessages(if(!require(pacman)){install.packages("pacman");library(pacman)})
 
 # Install/load tons of packages.
-p_load("doParallel", # Allow parallel computation
-       "fields",     # Allow the display of the grid of plots
-       "ape",        # Multiple tools of phylogenetic analyses
-       "untb",       # Allow the creation of the fisherian ecosystem
-       "TreeSim",    # Allow the creation of the phylogenetic trees.
-       "dplyr",      # Allow the use of the plyr syntax
-       "tidyr",      # Allow the use of function "pivot_longer"
-       "stringr",    # Allow the use of function "str_remove"
-       "ggplot2",    # Graphical representation tools
-       "magrittr",   # Allow the use of function "set_colnames"
-       "argparser",   # Add a command_line parser 
-       "tidyverse",
-       "vegan",
-       "raster",
-       "ggplotify",
-       "ggpubr",
-       "patchwork",
-       "RColorBrewer",
-       "scales",
-       "betapart",
-       "purrr",
-       "gridExtra",
-       "ggpointdensity",
-       "hexbin",
-       "gdm",
-       "scales",
-       "FactoMineR",
-       "factoextra",
-       "broom",
-       "spaa",
-       "LaplacesDemon",
-       "rstatix",
-       "ufs",
-       "ggnewscale",
-       "multcompView",
-       "varhandle",
-       "caret",
-       "corrr",
-       "ggtree"
-)
+p_load(doParallel, # Allow parallel computation
+       ape,        # Multiple tools of phylogenetic analyses
+       dplyr,      # Allow the use of the plyr syntax
+       tidyr,      # Allow the use of function "pivot_longer"
+       ggplot2)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -192,8 +157,8 @@ bryoTraits <- read.csv("Bryophytes_Traits_SpRichness.csv",row.names=1)
 bryoEnv <- read.csv("EnvDataForBryophytes.csv",row.names=1) # mnt_mean was changed directly in the dataset to "z"
 
 # Load the phylotrees
-Liver_Tree <- read.tree("timetree50mod-liverwortsV2.nwk")
-Mosses_Tree <- read.tree("timetree50mod-mossesV2.nwk")
+Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverwortsV2.nwk")
+Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mossesV2.nwk")
 
 # -- Split between Mosses and Liverworts -- #
 
@@ -213,14 +178,87 @@ mossData <- dplyr::select(bryoData,any_of(c(Bryo_Meta,Moss_Names)))
 Moss_Names <- colnames(mossData)[-c(1:4)]
 Liver_Names <- colnames(liverData)[-c(1:4)]
 
-
 # Message
 cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green"))
+
+#-------------------------------------------#
+##### SR COMPUTATION AND PLOT FILTERING #####
+#-------------------------------------------#
+
+# -- Computation of the wanted Metrics -- #
+
+# Input a threshold for the minimum number of species mandatory for the analyses
+Thresh <- 5
+
+# Total Bryophytes
+Bryo.filtered <- bryoData %>%
+  # Compute the Species Richness
+  mutate(SR = apply(bryoData[,5:ncol(bryoData)],1,sum), .after = y) %>%
+  # Select the plots based on the Species richness threshold.
+  dplyr::filter(SR > Thresh)
+
+# Number of plot lost : 224 / Number of plot left: 433
+nrow(bryoData) - nrow(Bryo.filtered)
+
+# Total Mosses
+Moss.filtered <- mossData %>%
+  # Compute the Species Richness
+  mutate(SR = apply(mossData[,5:ncol(mossData)],1,sum), .after = y) %>%
+  # Select the plots based on the Species richness threshold.
+  dplyr::filter(SR > Thresh)
+
+# Number of plot lost : 234 / Number of plot left: 423
+nrow(mossData) - nrow(Moss.filtered)
+
+# Total Liverworts
+Liver.filtered <- liverData %>%
+  # Compute the Species Richness
+  mutate(SR = apply(liverData[,5:ncol(liverData)],1,sum), .after = y) %>%
+  # Select the plots based on the Species richness threshold.
+  dplyr::filter(SR > Thresh)
+
+# Number of plot lost : 631 / Number of plot left: 26
+nrow(liverData) - nrow(Liver.filtered)
+
+# Total Tracheophytes
+# Tracheo.filtered <- TracheoData %>%
+  # Rename the X and Y columns
+#  rename(x = "X_releve", y = "Y_releve") %>%
+  # Compute the Species Richness
+#  mutate(SR = apply(TracheoData[,2:ncol(TracheoData)],1,sum), .after = y) %>%
+  # Select the plots based on the Species richness threshold.
+#  dplyr::filter(SR > Thresh)
+
+# Number of plot lost : 0 / Number of plot left: 413
+# nrow(TracheoData) - nrow(Tracheo.filtered)
+
+# Message
+cat(rule(left = "- Data filtered based on species richness - ", line_col = "white", line = " ", col = "green"))
+
+#------------------------------------#
+##### ENVIRONMENTAL DATA MERGING #####
+#------------------------------------#
+
+
+
+#----------------------#
+##### RANGE CHOICE #####
+#----------------------#
+
+
+
+
+
 
 
 #--------------------------#
 ##### PIST COMPUTATION #####
 #--------------------------#
+
+
+
+
+
 
 # Creation of a function to compute the phybeta-diversity indices.
 # Take as parameter : 
