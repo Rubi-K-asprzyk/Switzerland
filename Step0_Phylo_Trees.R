@@ -14,7 +14,7 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 #------------------------#
 
 # Set the Working directory
-setwd("~/Documents/PhD-Thesis/Research/Switzerland")
+# setwd("~/Documents/PhD-Thesis/Research/Switzerland")
 
 # Install/load pacman. 
 suppressPackageStartupMessages(if(!require(pacman)){install.packages("pacman");library(pacman)})
@@ -125,7 +125,7 @@ Gn_Found_Baker <- Gn_names[which(Gn_names %in% BakerTip$Genus)] # %: 83 (length(
   # See treemodif for modification done. 
 
 # Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
-Bryo_Names <- read.csv(file = "Bryophyte_Names.csv", row.names = 1)
+Bryo_Names <- read.csv(file = "Utilities/Bryophyte_Names.csv", row.names = 1)
 Moss_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Moss"),Species)$Species
 Liver_Names <- dplyr::select(filter(Bryo_Names,Taxa == "Liverwort"),Species)$Species
 
@@ -147,8 +147,8 @@ Moss_Names <- colnames(mossData)
 Liver_Names <- colnames(liverData)
 
 # Load the phylotrees
-Liver_Tree <- read.tree("timetree50mod-liverworts.nwk")
-Mosses_Tree <- read.tree("timetree50mod-mosses.nwk")
+Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverworts.nwk")
+Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mosses.nwk")
 
 # Get the tips clean
 Liver_Tree$tip.label <- Liver_Tree$tip.label %>% gsub("'","",.)
@@ -157,14 +157,14 @@ Mosses_Tree$tip.label<- Mosses_Tree$tip.label %>% gsub("'","",.)
   # ----- LIVERWORTS ----- # 
 
 # Tips to delete (They are deleted because they will not be find in the DB of occurence, therefore it is easier to verify that all tips are found afterwards)
-Tips_deletion <- c("Marchantia_alpestris","Leiosporoceros_dussii","Anthoceros_agrestis")
+Tips_deletion <- c("Marchantia_alpestris","Leiosporoceros_dussii","Anthoceros_agrestis","Scapania_cf_helvetica")
 
 # Tips to create a polytomy with the tips "Jungermannia"
 Tips_Poly_Jungermannia <- c("Jungermannia_atrovirens","Jungermannia_borealis","Jungermannia_cf_obovata","Jungermannia_cf_polaris")
 
 # Tips to change the name from OLD to NEW
-Tips_OLD <- c("Scapania_cf_helvetica","Lophozia_bicrenata","Lophozia_sudetica","Barbilophizoa_lycopodioides","Calypogeia_fissa","Jungermannia_gracillima","Leiocolea_bantriensis","Leiocolea_heterocolpos","Pellia_cf_epiphylla","Preissia_quadrata","Reboulia_hemispherica","Mannia_cf_controversa")
-Tips_NEW <- c("Scapania_irrigua","Isopaches_bicrenatus","Barbilophozia_sudetica","Barbilophozia_lycopodioides","Calypogeia_azurea","Solenostoma_gracillimum","Mesoptychia_bantriensis","Mesoptychia_heterocolpos","Pellia_epiphylla","Marchantia_quadrata","Reboulia_hemisphaerica","Mannia_cf_androgyna")
+Tips_OLD <- c("Lophozia_bicrenata","Lophozia_sudetica","Barbilophizoa_lycopodioides","Calypogeia_fissa","Jungermannia_gracillima","Leiocolea_bantriensis","Leiocolea_heterocolpos","Pellia_cf_epiphylla","Preissia_quadrata","Reboulia_hemispherica","Mannia_cf_controversa")
+Tips_NEW <- c("Isopaches_bicrenatus","Barbilophozia_sudetica","Barbilophozia_lycopodioides","Calypogeia_azurea","Solenostoma_gracillimum","Mesoptychia_bantriensis","Mesoptychia_heterocolpos","Pellia_epiphylla","Marchantia_quadrata","Reboulia_hemisphaerica","Mannia_cf_androgyna")
 
   # -- Transform the tree -- #
 
@@ -195,7 +195,7 @@ Liver_Missing <- Liver_Tips[!Liver_Tips %in% intersect(Liver_Tips,Liver_Names)]
   # -- Saving -- # 
 
 # Save the new tree
-write.tree(phy = New_Liver_Tree, file = "timetree50mod-liverwortsV2.nwk")
+write.tree(phy = New_Liver_Tree, file = "PhyloTree/timetree50mod-liverwortsV2.nwk")
 
 
 # ----- MOSSES ----- # 
@@ -295,4 +295,4 @@ Moss_Missing <- Moss_Tips[!Moss_Tips %in% intersect(Moss_Tips,Moss_Names)]
 # -- Saving -- # 
 
 # Save the new tree
-write.tree(phy = New_Moss_Tree, file = "timetree50mod-mossesV2.nwk")
+write.tree(phy = New_Moss_Tree, file = "PhyloTree/timetree50mod-mossesV2.nwk")

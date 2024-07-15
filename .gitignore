@@ -2,3 +2,7 @@
 /.~lock.Bryophyte_Names.csv#
 /.~lock.FinalMatrixLv95_SynChangedV3.csv#
 /.~lock.tibo.csv#
+.Rproj.user
+.RData
+.Rhistory
+*.Rproj
