@@ -24,7 +24,9 @@ p_load(doParallel, # Allow parallel computation
        ggplot2,
        purrr,
        ggpubr,
-       ggnewscale)
+       ggnewscale,
+       gtools,
+       forcats)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -240,55 +242,51 @@ Liver.filtered <- left_join(Liver.filtered,bryoEnv) %>% relocate(z,.after = y)
 #----------------------#
 
 # Set the number breaks
-breaks = 10
+breaks_nb = 10
 
 # Choose between weighted or unweighted altitudinal stripes "UW_Break" or "W_Break" for the analyses. 
-Break <- "W_Break"   
-
-# Breaks have to be changed from the intervals to the simple number
-#if(Break == "UW_Break") {Break_S <- "UW_Stripe"
-#} else if (Break == "W_Break") {Break_S <- "W_Stripe"}
+breaks_type <- "Weighted"  # Weighted / Unweighted
 
 # Total Bryophytes
 Bryo.filtered <- mutate(Bryo.filtered,
   # Add the Taxa
-  "Taxa" = "Bryophytes",
-  # Add the unweighted break (Range) 
-  "UW_Break" = cut(Bryo.filtered$z, breaks, dig.lab = 4), 
-  # Add the weighted break (Range) 
-  "W_Break" = cut_number(Bryo.filtered$z, breaks, dig.lab = 4),
-  # Add the unweighted break (Number)  
-  "UW_Stripe" = cut(Bryo.filtered$z, breaks, dig.lab = 4, labels = F), # Set labels = F to have categorical values as simple numbers. 
-  # Add the weighted break (Number) 
-  "W_Stripe" = cut_number(Bryo.filtered$z, breaks, dig.lab = 4, labels = F), 
+  Taxa = "Bryophytes",
+  # Add the desired breaks
+  Break = case_when(breaks_type == "Weighted" ~ cut_number(Bryo.filtered$z, n = breaks_nb, dig.lab = 4),
+                    breaks_type == "Unweighted" ~ cut(Bryo.filtered$z, breaks_nb, dig.lab = 4),
+                    .default = "OSKOUR"),
+  # Add the desired Stripe
+  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Bryo.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
+                     breaks_type == "Unweighted" ~ as.character(cut(Bryo.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
+                    .default = "OSKOUR"),
   .after = z)
 
 # Total Mosses
 Moss.filtered <- mutate(Moss.filtered,
   # Add the Taxa
-  "Taxa" = "Mosses",
-  # Add the unweighted break (Range) 
-  "UW_Break" = cut(Moss.filtered$z, breaks, dig.lab = 4), 
-  # Add the weighted break (Range) 
-  "W_Break" = cut_number(Moss.filtered$z, breaks, dig.lab = 4),
-  # Add the unweighted break (Number)  
-  "UW_Stripe" = cut(Moss.filtered$z, breaks, dig.lab = 4, labels = F), # Set labels = F to have categorical values as simple numbers. 
-  # Add the weighted break (Number) 
-  "W_Stripe" = cut_number(Moss.filtered$z, breaks, dig.lab = 4, labels = F), 
+  Taxa = "Mosses",
+  # Add the desired breaks
+  Break = case_when(breaks_type == "Weighted" ~ cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4),
+                    breaks_type == "Unweighted" ~ cut(Moss.filtered$z, breaks_nb, dig.lab = 4),
+                    .default = "OSKOUR"),
+  # Add the desired Stripe
+  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
+                     breaks_type == "Unweighted" ~ as.character(cut(Moss.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
+                    .default = "OSKOUR"),
   .after = z)
 
 # Total Liverworts
 Liver.filtered <- mutate(Liver.filtered,
   # Add the Taxa
-  "Taxa" = "Liverworts",
-  # Add the unweighted break (Range) 
-  "UW_Break" = cut(Liver.filtered$z, breaks, dig.lab = 4), 
-  # Add the weighted break (Range) 
-  "W_Break" = cut_number(Liver.filtered$z, breaks, dig.lab = 4),
-  # Add the unweighted break (Number)  
-  "UW_Stripe" = cut(Liver.filtered$z, breaks, dig.lab = 4, labels = F), # Set labels = F to have categorical values as simple numbers. 
-  # Add the weighted break (Number) 
-  "W_Stripe" = cut_number(Liver.filtered$z, breaks, dig.lab = 4, labels = F), 
+  Taxa = "Liverworts",
+  # Add the desired breaks
+  Break = case_when(breaks_type == "Weighted" ~ cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4),
+                    breaks_type == "Unweighted" ~ cut(Liver.filtered$z, breaks_nb, dig.lab = 4),
+                    .default = "OSKOUR"),
+  # Add the desired Stripe
+  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
+                     breaks_type == "Unweighted" ~ as.character(cut(Liver.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
+                    .default = "OSKOUR"),
   .after = z)
 
 
@@ -308,11 +306,11 @@ cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " "
 # Create a global dataframe containing the results for all taxa. 
 Total.filtered <- 
   # Bind the all the wanted taxa
-  purrr::reduce(list(Bryo.filtered,Moss.filtered,Liver.filtered),full_join) %>%
+  purrr::reduce(list(Bryo.filtered,Moss.filtered,Liver.filtered),full_join, by = c("Sites_notre_num_rotation_", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "SR")) %>%
   # Select only the wanted data
   dplyr::select("Sites_notre_num_rotation_":"SR") %>%
   # Group the data
-  group_by(Taxa, .data[[Break]]) %>%
+  group_by(Taxa, Break) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
   mutate(Sum = sum(SR), Count=n(), Var_Value = var(SR), Mean_Value = mean(SR)) %>%
   # Sort the values by "z" across for both Taxa.
@@ -328,16 +326,16 @@ SR.summary <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {
     # Select the wanted taxa
     dplyr::filter(Taxa == Taxon) %>%
     # Group the data
-    group_by(.data[[Break]]) %>%
+    group_by(Break) %>%
     # Compute the summary stat
     get_summary_stats(SR,type = "common") %>% # Compute the summary statistics for each groups 
     # Draw the summary statistics
     ggsummarytable(
-      x = Break,                           # Split by stripes
+      x = "Break",                             # Split by stripes
       y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
       digits = 2,                            # Number of digits 
       size = 12,                              # Size of the text
-      color = Break,                       # Color by stripes
+      color = "Break",                         # Color by stripes
       ggtheme = arrange_theme() +            # Theme
        theme(legend.position = "none")
       )
@@ -362,7 +360,6 @@ ggsummarytable(x = "Taxa",                          # Split by stripes
                  theme(legend.position = "none")
 )
 
-    
 # - Distribution of SR ~ Altitudinal stripes - # 
 
 SR_Density <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
@@ -370,19 +367,20 @@ SR_Density <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {
   # Find the count of plots in each stripe
 SR.mean <- Total.filtered %>%
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[2]) %>%
+  dplyr::filter(Taxa == Taxon[3]) %>%
   # Group the data
-  group_by(.data[[Break]] ) %>%
+  group_by(Break) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
   summarise(z = mean(z), Mean_Value = mean(SR)) %>%
-    arrange(z)
-
+  arrange(z)
 
 Plot <- Total.filtered %>% 
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[2]) %>%
+  dplyr::filter(Taxa == Taxon[3]) %>%
+  # Reorder the break names
+  mutate(Break = factor(Break, levels = SR.mean$Break)) %>%
   # Aes
-  ggplot(aes(x = z, y = SR, color = .data[[Break]])) +
+  ggplot(aes(x = z, y = SR, color = Break)) + # Reorder the factors correctly
   # Plot all the values
   geom_point() +
   # Plot the connected scatter plot of the mean values for each altitudinal stripe.
@@ -399,7 +397,7 @@ Plot <- Total.filtered %>%
     color = "Stripe altitudinal limits",
     title = paste0("ScatterPlot of each metric values ~ Altitude"),
     subtitle = paste0(
-      "Black dotted line represent the mean for each metric of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(Break == "W_Break",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
+      "Black dotted line represent the mean for each metric of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "W_Break",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
 
   # Return the plot
   return(Plot)
