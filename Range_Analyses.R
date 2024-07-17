@@ -26,7 +26,8 @@ p_load(doParallel, # Allow parallel computation
        ggpubr,
        ggnewscale,
        gtools,
-       forcats)
+       forcats,
+       rstatix)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -360,14 +361,14 @@ ggsummarytable(x = "Taxa",                          # Split by stripes
                  theme(legend.position = "none")
 )
 
-# - Distribution of SR ~ Altitudinal stripes - # 
+# - Distribution of SR points ~ Altitudinal stripes - # 
 
-SR_Density <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
+SR_Points <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
 
   # Find the count of plots in each stripe
 SR.mean <- Total.filtered %>%
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[3]) %>%
+  dplyr::filter(Taxa == Taxon) %>%
   # Group the data
   group_by(Break) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
@@ -376,7 +377,7 @@ SR.mean <- Total.filtered %>%
 
 Plot <- Total.filtered %>% 
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[3]) %>%
+  dplyr::filter(Taxa == Taxon) %>%
   # Reorder the break names
   mutate(Break = factor(Break, levels = SR.mean$Break)) %>%
   # Aes
@@ -392,12 +393,12 @@ Plot <- Total.filtered %>%
   guides(size = "none") +
   # Labels
   xlab("Altitude") +
-  ylab("Metric values") +
+  ylab("Species Richness") +
   labs(
     color = "Stripe altitudinal limits",
-    title = paste0("ScatterPlot of each metric values ~ Altitude"),
+    title = paste0("ScatterPlot of species richness ~ Altitude"),
     subtitle = paste0(
-      "Black dotted line represent the mean for each metric of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "W_Break",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
+      "Black dotted line represent the mean species richness for each of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "Weighted",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
 
   # Return the plot
   return(Plot)
@@ -405,41 +406,74 @@ Plot <- Total.filtered %>%
 } %>% set_names(unique(Total.filtered$Taxa))
 
 
-    
-  # - Density plots of the Metric(s) values - #
-    
-Plot2_Glob <- Alpha_Data %>% 
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Aes
-  ggplot(aes(x = Value)) +
-  # Plot
-  geom_density(fill = "grey",alpha = 0.5) +
-  # Split between Taxa and Metric
-  facet_grid(Metric ~ Taxa, scales = "free") +
-  # Labels
-  labs(
-    title = paste0("DensityPlot of each Metrics"))
+#  # - Density plots of the Metric(s) values - #
+#    
+#Plot2_Glob <- Total.filtered %>% 
+#  # Group the data
+#  group_by(Taxa) %>%
+#  # Aes
+#  ggplot(aes(x = SR)) +
+#  # Plot
+#  geom_density(fill = "grey",alpha = 0.5) +
+#  # Split between Taxa and Metric
+#  facet_grid(. ~ Taxa, scales = "free") +
+#  # Labels
+#  labs(
+#    title = paste0("DensityPlot of each Metrics"))
     
     # ----- #
     
-  # - BoxPlot of the Metric(s) values - #
+# - Boxplots of SR points ~ Altitudinal stripes - # 
 
-Plot3_Glob <- Alpha_Data %>%
+# FIRST STEP / Compute the wilcoxon tests between all the stripes to after display them on the boxplot.
+  
+SR.Wilcoxon <- Total.filtered %>%
+  # Group and filter the data with variance == 0
+  group_by(Taxa,Break) %>%
+  filter(Var_Value != 0) %>%
   # Group the data
-  group_by(Metric, Taxa) %>%
+  group_by(Taxa) %>%
+  # Compute the kruskall-test
+  wilcox_test(formula = SR ~ Stripe, p.adjust.method = "bonferroni") %>%
+  # Transform "group1" and "group2" into numeric
+  mutate_at(c("group1", "group2"), as.numeric ) %>%
+  # Add a column that is the "stripe distance" between the distribution compared
+  mutate(Stripe_Distance = abs(group1 - group2))
+
+# We need a column "y.position" for the plotting of the significance brackets
+y.position <- Total.filtered %>%
+  # Group the data
+  group_by(Taxa) %>%
+  # Add the y.position with an increase of X%. 
+  summarise(y.position = max(SR) * 1) 
+  
+# Filter the precedent data_frame to only keep the values of stripe distance == 1
+SR.Wilcoxon.Adj <- SR.Wilcoxon %>%
+  # Filter the data 
+  filter(Stripe_Distance == 1) %>%
+  # Add the values of y.position 
+  left_join(y.position, by=c("Taxa")) 
+
+# SECOND STEP / Draw the boxplots.
+
+SR_Boxplots <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
+
+  # Find the count of plots in each stripe
+Wilcox <- SR.Wilcoxon.Adj %>%
+  # Select the wanted taxa
+  dplyr::filter(Taxa == Taxon[1])
+
+Plot <- Total.filtered %>%
+  # Select the wanted taxa
+  dplyr::filter(Taxa == Taxon[3]) %>%
   # Aes
-  ggplot(aes(x = .data[[Break_S]], y = Value, color = .data[[Break]], group = .data[[Break]])) +
-  # Color Palette    
-  scale_color_brewer(palette = Pal_col) +
+  ggplot(aes(x = Break, y = SR, color = Break), group = Break) +
   # Plot all the values
-  geom_boxplot() + 
-  # Split between Taxa and Metric
-  facet_grid(Metric ~ Taxa, scales = "free_y") +
+  geom_boxplot() +
   # Add the significativity labels
-  stat_pvalue_manual(WT_S_Adj, 
-                     label = "p.adj.signif",
-                     hide.ns = T) +
+  stat_pvalue_manual(Wilcox, 
+                    label = "p.adj.signif",
+                    hide.ns = F) +
   # Labels
   xlab("Altitudinal stripes") +
   ylab("Metric values") +
@@ -449,6 +483,8 @@ Plot3_Glob <- Alpha_Data %>%
     subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
                           "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
   )
+
+} %>% set_names(unique(Total.filtered$Taxa))
 
     # ----- #
 
