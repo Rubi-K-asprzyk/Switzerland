@@ -27,7 +27,10 @@ p_load(doParallel, # Allow parallel computation
        ggnewscale,
        gtools,
        forcats,
-       rstatix)
+       rstatix,
+       betapart,
+       tibble,
+       spacodiR)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -156,12 +159,15 @@ cat(rule(left = "- Theme set - ", line_col = "white", line = " ", col = "green")
 
 # Load the datasets
   # Occurence
-bryoData <- read.csv("FinalMatrixLv95_SynChangedV3.csv",row.names=1) 
+bryoData <- read.csv("FinalMatrixLv95_SynChangedV3.csv",row.names=1) %>%
+  # Rename "Sites_notre_num_rotation_"
+  rename("Site_VDP" = "Sites_notre_num_rotation_")
   # Traits
 bryoTraits <- read.csv("Bryophytes_Traits_SpRichness.csv",row.names=1)
   # Environment Variables
-bryoEnv <- read.csv("EnvironmentalValues_Bryophytes.csv",row.names=1) # mnt_mean was changed directly in the dataset to "z"
-
+bryoEnv <- read.csv("EnvironmentalValues_Bryophytes.csv",row.names=1) %>% # mnt_mean was changed directly in the dataset to "z"
+  # Rename "Sites_notre_num_rotation_"
+  rename("Site_VDP" = "Sites_notre_num_rotation_")
 # Load the phylotrees
 Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverwortsV2.nwk")
 Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mossesV2.nwk")
@@ -290,13 +296,6 @@ Liver.filtered <- mutate(Liver.filtered,
                     .default = "OSKOUR"),
   .after = z)
 
-
-# Add the stripe distances 
-# Liverworts_Beta <- Liverworts_Beta %>% mutate(UW_Stripe_dist = abs(UW_StripeA - UW_StripeB), W_Stripe_dist = abs(W_StripeA - W_StripeB), .after = W_StripeB)
-# Mosses_Beta <- Mosses_Beta %>% mutate(UW_Stripe_dist = abs(UW_StripeA - UW_StripeB), W_Stripe_dist = abs(W_StripeA - W_StripeB), .after = W_StripeB)
-# Bryophytes_Beta <- Bryophytes_Beta %>% mutate(UW_Stripe_dist = abs(UW_StripeA - UW_StripeB), W_Stripe_dist = abs(W_StripeA - W_StripeB), .after = W_StripeB)
-# Tracheo_Beta <- Tracheo_Beta %>% mutate(UW_Stripe_dist = abs(UW_StripeA - UW_StripeB), W_Stripe_dist = abs(W_StripeA - W_StripeB), .after = W_StripeB)
-
 # Message
 cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " ", col = "green"))
 
@@ -307,9 +306,9 @@ cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " "
 # Create a global dataframe containing the results for all taxa. 
 Total.filtered <- 
   # Bind the all the wanted taxa
-  purrr::reduce(list(Bryo.filtered,Moss.filtered,Liver.filtered),full_join, by = c("Sites_notre_num_rotation_", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "SR")) %>%
+  purrr::reduce(list(Bryo.filtered,Moss.filtered,Liver.filtered),full_join, by = c("Site_VDP", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "SR")) %>%
   # Select only the wanted data
-  dplyr::select("Sites_notre_num_rotation_":"SR") %>%
+  dplyr::select("Site_VDP":"SR") %>%
   # Group the data
   group_by(Taxa, Break) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
@@ -404,24 +403,6 @@ Plot <- Total.filtered %>%
   return(Plot)
    
 } %>% set_names(unique(Total.filtered$Taxa))
-
-
-#  # - Density plots of the Metric(s) values - #
-#    
-#Plot2_Glob <- Total.filtered %>% 
-#  # Group the data
-#  group_by(Taxa) %>%
-#  # Aes
-#  ggplot(aes(x = SR)) +
-#  # Plot
-#  geom_density(fill = "grey",alpha = 0.5) +
-#  # Split between Taxa and Metric
-#  facet_grid(. ~ Taxa, scales = "free") +
-#  # Labels
-#  labs(
-#    title = paste0("DensityPlot of each Metrics"))
-    
-    # ----- #
     
 # - Boxplots of SR points ~ Altitudinal stripes - # 
 
@@ -461,11 +442,11 @@ SR_Boxplots <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {
   # Find the count of plots in each stripe
 Wilcox <- SR.Wilcoxon.Adj %>%
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[1])
+  dplyr::filter(Taxa == Taxon)
 
 Plot <- Total.filtered %>%
   # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon[3]) %>%
+  dplyr::filter(Taxa == Taxon) %>%
   # Aes
   ggplot(aes(x = Break, y = SR, color = Break), group = Break) +
   # Plot all the values
@@ -486,489 +467,193 @@ Plot <- Total.filtered %>%
 
 } %>% set_names(unique(Total.filtered$Taxa))
 
-    # ----- #
 
-  # - BoxPlot of the Metric(s) values ~ Taxa - #
+#-------------------------------#
+##### TAXO BETA COMPUTATION #####
+#-------------------------------#
 
-Plot4_1_Glob <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Aes
-  ggplot(aes(x = Taxa, y = Value, color = Taxa)) +
-  # Color Palette    
-  scale_color_manual(values = color_scheme) +
-  # Plot all the values
-  geom_boxplot() + 
-  # Split between Taxa and Metric
-  facet_grid(Metric ~ .data[[Break_S]], scales = "free_y") +
-  # Add the significativity labels
-  # stat_pvalue_manual(WT_Taxa, 
-  #                    label = "p.adj.signif",
-  #                    hide.ns = T,
-  #                    step.increase = 0.1,
-  #                    step.group.by = c("Metric",Break_S)) +
-  # Rotate
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-  # Labels
-  xlab("Taxa") +
-  ylab("Metric values") +
-  labs(
-    color = "Taxa",
-    title = paste0("BoxPlot of metric values ~ Altitudinal stripes ~ Comparison of taxa "),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
-                      "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
-  )
+Taxo.beta <- foreach(Taxa = list(Bryo.filtered,Moss.filtered,Liver.filtered)) %dopar% { 
 
-  # - Connected scatterplots of the Metric(s) values ~ Taxa - #
+  # Add the rowname as a column to keep this info
+  Taxon <- Taxa %>%
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric)
 
-Plot4_2_Glob <- Summ_Alpha_Data %>%
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Aes
-  ggplot(aes(x = .data[[Break]], y = Mean_Value, color = Taxa, group = Taxa)) +
-  # Color Palette    
-  scale_color_manual(values = color_scheme) +
-  # Plot all the values
-  geom_point() + 
-  geom_line() +
-  # Split between Taxa and Metric
-  facet_grid(Metric ~ ., scales = "free_y") +
-  # Rotate
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-  # Labels
-  xlab("Altitudinal stripes") +
-  ylab("Metric values") +
-  labs(
-    color = "Taxa",
-    title = paste0("Scatterplots of metric values by taxa ~ Altitudinal stripes")
-  )
+  # -- Sorensen -- # 
 
-  # - Combination of the two previous plots of the Metric(s) values ~ Taxa - #    
+  Sorensen <- Taxon %>%
+    # Select only the occurence data that is comprised between the columns "SR" and "ch_edaphic_eivdescombes_pixel_d"
+    select(!(Plot:SR) & !(ch_edaphic_eivdescombes_pixel_d:sradY)) %>%
+    # Compute the Sorensen index
+    beta.pair(x = ., index.family = "sorensen") %>%
+    # Transform into a matrix
+    lapply(as.matrix) 
 
-Plot4_Glob <- 
-    # Arrange the two plots
-    ggarrange(Plot4_1_Glob,Plot4_2_Glob, ncol = 2, legend = "right", common.legend = T, widths = c(3,1)) %>% 
-  as.ggplot() +
-  arrange_theme()
-
-##### ------------ 1.A.b: Statistics ----------------------- #####
-
-##### ----- 1.A.b.1: Normality tests ----- #####
-
-# Verification of the normality of the distribution of the values for each altitudinal stripe.
-# We'll use the of test of Shapiro-Wilk because we have most of the time less than 50 values.
-# H0: Data are normally distributed: if p-value < 0.05, we reject that hypothesis.
-
-# Message
-cat(rule(left = "- Normality tests: Shapiro-Wilk - ", line_col = "white", line = "_", col = "grey"))
-
-  #### . Shapiro-Wilk (Metric + Taxa) . ####
-
-SW_US <- Alpha_Data %>% 
-  group_by(Metric,Taxa)  %>% 
-  do(tidy(shapiro.test(.$Value))) %>% 
-  ungroup() %>% 
-  select(-method) %>%
-  # do an assignment (:=) and pass variables as column names by unquoting (!!) to not evaluate it
-  mutate(!!Break_S := NA)  # This column is added for future joining with the next dataset. 
-
-# Result:
-cat(paste0("- Normality tests grouped by Metric and Taxa: ",sum(SW_US$p.value > 0.05),"/",nrow(SW_US)," tests passed. - "))
-  
-    # ---- #
-  
-  #### . Shapiro-Wilk (Metric + Taxa + Stripes) . ####
-
-SW_S <- Alpha_Data %>% 
-  group_by(Metric, Taxa, .data[[Break_S]]) %>%
-  # Find the groups where the Variance is 0
-  mutate(Var_Value = var(Value)) %>%
-  # Remove these groups because they make the shapiro.test bug
-  filter(Var_Value != 0) %>%
-  # Do the shapiro_test
-  do(tidy(shapiro.test(.$Value))) %>%
-  ungroup() %>% 
-  select(-method)
-
-# Result:
-cat(paste0("- Normality tests grouped by Metric and Taxa and Stripes: ",sum(SW_S$p.value > 0.05),"/",nrow(SW_S)," tests passed. - "))
-  
-# Merge the two datasets
-SW_Result <- full_join(SW_US,SW_S)
-
-  # ------------------------------------------- # 
-  # /!\ Hypothesis of normality are not met /!\ # 
-  # ------------------------------------------- # 
-
-##### ----- 1.A.b.2: Equality of mean tests. ----- #####
-
-  # We will use Kruskall-Wallis tests to determine if means of the metrics are different from each other. 
-
-# --- Create a Dataset of Mean Values --- #
-
-# Find the count of plots in each stripe
-Summ_Alpha_Data <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric, Taxa, .data[[Break_S]],.data[[Break]] ) %>%
-  # Compute the Sum of the Metric and the number of plots for each group. 
-  summarise(z = mean(z), Mean_Value = mean(Value))
-
-# --- Compute the significance values with Kruskall-Wallis tests --- #
-
-  # Is there a significant difference between the groups ? 
-  # If p-value <0.05, there is a significant difference between the groups. 
-  
-# Message
-cat(rule(left = "- Equality of means tests: Kruskall-Wallis - ", line_col = "white", line = "_", col = "grey"))
-  
-  #### . Kruskall-Wallis (Metric + Taxa) . ####
-
-KW_US <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Compute the kruskall-test
-  do(tidy(kruskal.test(x = .$Value, g = .data[[Break_S]]))) %>%
-  # Remove the method
-  select(-c(method,parameter))
-
-    # ----- # 
-
-  #### . Kruskall-Wallis effect size (Metric + Taxa) . ####
-
-  # Effect size tells you how meaningful the relationship between variables or the difference between groups is. It indicates the practical significance of a research outcome.
-  # A large effect size means that a research finding has practical significance, while a small effect size indicates limited practical applications.
-  # The value multiplied by 100 represent the percentage of variance of the dependent variable explained by the independent one. 
-  
-# Message
-cat(rule(left = "- Kruskall-Wallis Effect-Size - ", line_col = "white", line = "_", col = "grey"))
-  
-KW_ES <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Compute the kruskall-test
-  kruskal_effsize(formula = as.formula(paste("Value","~",Break_S))) %>%
-  # Remove the method
-  select(-c(method))
-  
-    # ----- # 
-
-  #### . Wilcoxon test (Metric + Taxa ~ Stripes). ####
-  
-# Message
-cat(rule(left = "- Wilcox test (Metric + Taxa ~ Stripes) - ", line_col = "white", line = "_", col = "grey"))
-  
-WT_S <- Alpha_Data %>%
-  # Group and filter the data with variance == 0
-  group_by(Metric,Taxa,!!Break_S) %>%
-  filter(Var_Value != 0) %>%
-  # Group the data
-  group_by(Metric,Taxa) %>%
-  # Compute the kruskall-test
-  wilcox_test(formula = as.formula(paste("Value","~",Break_S)), p.adjust.method = "bonferroni") %>%
-  # Transform "group1" and "group2" into numeric
-  mutate_at(c("group1", "group2"), as.numeric ) %>%
-  # Add a column that is the "stripe distance" between the distribution compared
-  mutate(Stripe_Distance = abs(group1 - group2))
-
-    # ----- # 
-
-  #### . Wilcoxon test / Adjacent stripes (Metric + Taxa ~ Stripes ). ####
-
-# Message
-cat(rule(left = "- . Wilcoxon test for adjacent stripes (Metric + Taxa ~ Stripes ). - ", line_col = "white", line = "_", col = "grey"))
-
-# We need a column "y.position" for the plotting of the significance brackets
-y.position <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric,Taxa) %>%
-  # Add the y.position with an increase of X%. 
-  summarise(y.position = max(Value) * 1.2) 
-  
-# Filter the precedent data_frame to only keep the values of stripe distance == 1
-WT_S_Adj <- WT_S %>%
-  # Filter the data 
-  filter(Stripe_Distance == 1) %>%
-  # Add the values of y.position 
-  left_join(y.position, by=c("Metric","Taxa"))
-
-    # ----- # 
-
-  #### . Wilcoxon test (Metric + Stripes ~ Taxa). ####
-
-# Message
-cat(rule(left = "- Kruskall-Wallis (Metric + Stripes ~ Taxa ) - ", line_col = "white", line = "_", col = "grey"))
-
-# We need a column "y.position" for the plotting of the significance brackets
-y.position.taxa <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric,.data[[Break_S]]) %>%
-  # Add the y.position with an increase of X%. 
-  summarise(y.position = max(Value) * 1.2) 
-
-# Make the test
-WT_Taxa <- Alpha_Data %>%
-  # Group the data
-  group_by(Metric,.data[[Break_S]]) %>%
-  # Compute the kruskall-test
-  wilcox_test(formula = as.formula(paste("Value","~","Taxa")), p.adjust.method = "bonferroni") %>%
-  # Add the values of y.position 
-  left_join(y.position.taxa, by = c("Metric",Break_S))
-
-  # ----- #
-
-# ##### ----- 1.A.b.3: Correlations ----- #####
-# 
-#   #### . Correlation (Metric ~ Taxa). ####
-# 
-# # Compute the correlation between the metrics results and the variables. 
-# Cor_1a <- Alpha_Data %>% 
-#   # Group by the metric and taxa
-#   group_by(Metric,.data[[Break]]) %>%
-#   # only select the wanted columns
-#   select(all_of(c("Metric","Taxa",Break,"Value"))) %>%
-#   # Nest the data
-#     # The goal of that is to keep the outer-grouping (Metric and eventually the stripes) to work on the inner data_frames
-#   nest() %>%
-#   # On each of the "data", apply functions with map()
-#   mutate(
-#     correlations = map(data, 
-#                        ~ pivot_wider(data = .x,
-#                                      names_from = Taxa, 
-#                                      values_from = Value))
-#   ) %>%
-#   # Unnest to return to a dataframe shape
-#   unnest(correlations) %>%
-#   # Remove the "data" column
-#   select(-data) %>%
-#   # Keep the rows that correspond the the correlation between the actual "Value" and the Environnemental Variables
-#   filter(term == "Value") %>% 
-#   # Remove the "Values" and "Terms" columns
-#   select(-c(Value,term)) %>%
-#   # transform into a long format. 
-#   pivot_longer(!c(Taxa,Metric), names_to = "Variable", values_to = "Correlation") %>%
-#   # Sort the correlation column by decreasing order
-#   arrange(desc(Correlation),.by_group = TRUE)
-# 
-# # --- Compute the correlations between the metrics values and the different wanted variables --- #
-# 
-# # Create a global dataframe containing the results for all taxas as well as the environnemental variables
-# Alpha_Cor_Data <- Data_List %>%
-#   # Join everything together
-#   reduce(full_join) %>%
-#   # Combine the multiple columns of metric results into two : Metric and Value
-#   gather(key = "Metric", value = "Value", !!Metric) %>%
-#   # Transform into factor
-#   mutate(across(!!Break_S, as_factor)) %>%
-#   # Remove the columns that correspond to the species names
-#   select(-all_of(Sp_Names$Sp_name)) %>% 
-#   # Relocate Metric, Taxa and Values
-#   relocate(any_of(c("Metric","Value")),.after  = Taxa) %>%
-#   # Remove columns that contains Any NA
-#   select_if(~ !any(is.na(.)))
-# 
-# # Compute the correlation between the metrics results and the variables. 
-# Alpha_Cor <- Alpha_Cor_Data %>% 
-#   # Group the data
-#   group_by(Taxa,Metric) %>%
-#   # Create a list column of each grouped dataframes
-#   nest() %>%
-#   # Apply the correlations on each of the groups
-#   mutate(
-#     correlations = map(data, correlate)
-#   ) %>%
-#   # Unnest to return to a dataframe shape
-#   unnest(correlations) %>%
-#   # Remove the "data" column
-#   select(-data) %>%
-#   # Keep the rows that correspond the the correlation between the actual "Value" and the Environnemental Variables
-#   filter(term == "Value") %>% 
-#   # Remove the "Values" and "Terms" columns
-#   select(-c(Value,term)) %>%
-#   # transform into a long format. 
-#   pivot_longer(!c(Taxa,Metric), names_to = "Variable", values_to = "Correlation") %>%
-#   # Sort the correlation column by decreasing order
-#   arrange(desc(Correlation),.by_group = TRUE)
-# 
-# # Plot the correlations values
-# Alpha_Cor_Plot <- Alpha_Cor %>%
-#   # Group the data
-#   group_by(Metric, Taxa) %>%
-#   # Aes
-#   ggplot(aes(x = fct_inorder(Variable), y = Correlation, color = Taxa)) +
-#   # Palette 
-#   scale_color_brewer(palette = Pal_col) +
-#   # Plot all the values
-#   geom_point() +
-#   # Split between Taxa and Metric
-#   facet_grid(Taxa ~ Metric , scales = "free_y") +
-#   # Reoder the x-axis
-#   # scale_x_discrete(limits=Variable)
-#   # Rotate
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-#   # Guides
-#   guides(size = "none") +
-#   # Labels
-#   xlab("Altitude") +
-#   ylab("Metric values") +
-#   labs(
-#     color = "Stripe altitudinal limits",
-#     title = paste0("ScatterPlot of each metric values ~ Altitude"),
-#     subtitle = paste0(
-#       "Black dotted line represent the mean for each metric of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(Break == "W_Break",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
-
-
-##### ----- 1.A.2.a : Global Plots ------------------- #####
-
-    # ----- # 
-
-
-
-    # ----- #
-    
-  # - ScatterPlot of the Kruskall_Wallis tests results - #
-    
-# Create a dataset of significance for the next plots.
-Group_Signif <- WT_S %>%
-  # Group.by the wanted columns
-  group_by(Metric,Taxa,Stripe_Distance,p.adj.signif) %>%
-  # Change the stripe distance into factors
-  mutate_at(vars(Stripe_Distance),factor) %>%
-  # Create a column: Significant VS Non-Significant
-  mutate(Significance = ifelse(startsWith(p.adj.signif, "*"), "Significant", "Non_Significant")) %>%
-  # Change the grouping
-  ungroup() %>% group_by(Metric,Taxa,Stripe_Distance) %>%
-  # Add the number of stripe distances replicates for each of the stripes distances
-  mutate(Stripe_count = n()) %>%
-  # Change the grouping
-  ungroup() %>% group_by(Metric,Taxa,Stripe_Distance,Significance) %>%
-  # Add the number of significant results for each of the stripes distances
-  mutate(Signif_count = n()) %>%
-  # Compute the ratio of significant and non-significant tests (SPLITTED)
-  mutate(Signif_Percent = (Signif_count/Stripe_count)*100)
-    
-# Plot the comparisons of CONSECUTIVE altitudinal stripes.
-Plot5_Glob  <- Group_Signif %>%
-  # Group the data
-  group_by(Metric, Taxa) %>%
-  # Aes
-  ggplot(aes(x = Stripe_Distance, y = Signif_Percent, group = Significance, color = Significance)) +
-  # Split between Taxa and Metric
-  facet_grid(Metric ~ Taxa, scales = "free_y") +
-  # Draw the plot
-  geom_point() + 
-  geom_line() + 
-  geom_hline(yintercept = 50) +
-  # Color Palette
-  scale_color_brewer(palette=Pal_col) +
-  # Labels
-  xlab("Stripe distances") +
-  ylab("Percentage of tests") +
-  labs(
-    title = paste0("Percentage of Significant Wilcoxon tests of metric values ~ Stripe distance"),
-    subtitle = "Stripe distance is an articifial unit to describe how far the stripes are from each other.\nThe higher the stripe distance, the lower the number of possible pairwise comparisons.\nAll significance levels are combined into the two modalities."
-  )
-
-
-#--------------------------#
-##### PIST COMPUTATION #####
-#--------------------------#
-
-
-
-
-
-
-# Creation of a function to compute the phybeta-diversity indices.
-# Take as parameter : 
-# - Data : A dataframe containing the Occurrence data.
-# - Sp_names : A character vector of species names
-
-Beta_Phylo <- function(Data,Sp_names) {
-  
-  # ----- #
-  
-  # --- Creation of the dataframe --- # 
-  
-  Beta_Occ <- Data %>% 
-      dplyr::select(all_of(as.vector(Sp_names))) # Remove the meta_data columns.
-
-  
-  # ----- #
-  
-  # --- Computation of the Taxonomic Beta-Diversity Metrics --- # 
-  
-  # Sorensen
-  Beta_sor <- 
-    beta.pair(Beta_Occ, index.family = "sorensen") %>%
-    lapply(as.matrix)
-  
-  # Transform it into a vector
-  Beta_sor <-
-    lapply(names(Beta_sor), function(x) {
-      PW_to_Vector(Beta_sor[[x]], Colname=x)}) %>%
+      # Transform it into a vector
+  Sorensen <-
+    lapply(names(Sorensen), function(x) {
+    PW_to_Vector(Sorensen[[x]], Colname=x)}) %>%
     # Merge the results altogether
-    purrr::reduce(merge) 
-  
-  # Jaccard
-  Beta_jac <- 
-    beta.pair(Beta_Occ, index.family = "jaccard") %>%
-    lapply(as.matrix)
-  
-  # Transform it into a vector
-  Beta_jac <-lapply(names(Beta_jac), function(x) {
-    PW_to_Vector(Beta_jac[[x]], Colname=x)}) %>%
+    purrr::reduce(merge) %>%
+    # Add back the taxa we worked with
+    mutate(Taxa = unique(Taxon$Taxa), .before = 1)
+
+  # -- Jaccard -- # 
+
+  Jaccard <- Taxon %>%
+    # Select only the occurence data that is comprised between the columns "SR" and "ch_edaphic_eivdescombes_pixel_d"
+    select(!(Plot:SR) & !(ch_edaphic_eivdescombes_pixel_d:sradY)) %>%
+    # Compute the Sorensen index
+    beta.pair(x = ., index.family = "jaccard") %>%
+    # Transform into a matrix
+    lapply(as.matrix) 
+
+      # Transform it into a vector
+  Jaccard <-
+    lapply(names(Jaccard), function(x) {
+    PW_to_Vector(Jaccard[[x]], Colname=x)}) %>%
     # Merge the results altogether
-    purrr::reduce(merge) 
-  
-  # Bind the two metrics together 
-  Taxo_Beta <- merge(Beta_sor,Beta_jac)
-  
-  # ----- #
-  
-  # --- Addition of Meta-Data --- # 
-  
-  # Add the z-distance and 3D-distances between the plots as a variable. 
-  Taxo_Beta <- 
-    if(Type == "B"){ 
-      
-      # -- Plot A: Add x, y and z -- # 
-      
-      left_join(Taxo_Beta,dplyr::select(Data,"Site_VDP","x","y","z"), c("PlotA" = "Site_VDP")) %>% # Use a left join
-        relocate(any_of(c('x',"y","z")),.after = PlotB) %>% # Move the column
+    purrr::reduce(merge) %>%
+    # Add back the taxa we worked with
+    mutate(Taxa = unique(Taxon$Taxa), .before = 1)
+
+
+  # -- Bind the metrics together -- #
+  Taxo_Beta <- merge(Sorensen,Jaccard) %>%
+    # Transform the wanted columns into numeric
+    mutate_at(c('PlotA', 'PlotB'), as.numeric) %>%
+    # Reorder logically the samples
+    arrange(PlotA,PlotB)
+
+  # -- Join with the metadata -- #
+  Taxo_Beta <- Taxo_Beta %>%
+
+      # -- Plot A: Add x, y and z -- #
+
+        left_join(dplyr::select(Taxon,Plot:z), c("PlotA" = "Plot")) %>% # Use a left join
+        relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
         data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
         
-        # -- Plot B: Add x, y and z -- # 
+      # -- Plot B: Add x, y and z -- # 
         
-        left_join(dplyr::select(Data,"Site_VDP","x","y","z"), c("PlotB" = "Site_VDP")) %>% # Use a left join
-        relocate(any_of(c('x',"y","z")),.after = PlotA_z) %>% # Move the column
-        data.table::setnames(c('x',"y","z"),c('PlotB_x','PlotB_y','PlotB_z')) %>% # rename the column
+        left_join(dplyr::select(Taxon,Plot:z), c("PlotB" = "Plot")) %>% # Use a left join
+        relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
+        data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
         
-        # -- Add the absolute difference of altitude between the two plots (delta_z)
+
+      # -- Add the absolute difference of altitude between the two plots (delta_z)
         mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
-        # -- Add the complete 3D-distance between the two plots (delta_xyz)
+      # -- Add the complete 3D-distance between the two plots (delta_xyz)
         mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
-      
-    } else {
-      
-      # -- Plot A: Add x, y and z -- # 
-      
-      left_join(Taxo_Beta,dplyr::select(Data,"X","x","y","z"), c("PlotA" = "X")) %>% # Use a left join
-        relocate(any_of(c('x',"y","z")),.after = PlotB) %>% # Move the column
-        data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
-        
-        # -- Plot B: Add x, y and z -- # 
-        
-        left_join(dplyr::select(Data,"X","x","y","z"), c("PlotB" = "X")) %>% # Use a left join
-        relocate(any_of(c('x',"y","z")),.after = PlotA_z) %>% # Move the column
-        data.table::setnames(c('x',"y","z"),c('PlotB_x','PlotB_y','PlotB_z')) %>% # rename the column
-        
-        # -- Add the absolute difference of altitude between the two plots (delta_z)
-        mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
-        # -- Add the complete 3D-distance between the two plots (delta_xyz)
-        mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
-    }
-  
-  # Return the wanted data
+
+  # Return the results
   return(Taxo_Beta)
-  
+
+} %>% set_names(c("Bryophytes","Mosses","Liverworts"))
+ 
+#--------------------------------#
+##### PHYLO BETA COMPUTATION #####
+#--------------------------------#
+
+Phylo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% { 
+
+  # Add the rowname as a column to keep this info
+  Taxon <- Taxa[[2]] %>%
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric) %>%
+    # Select only the occurence data that is comprised between the columns "SR" and "ch_edaphic_eivdescombes_pixel_d"
+    select(!(Plot:SR) & !(ch_edaphic_eivdescombes_pixel_d:sradY)) %>%
+    # Transpose the data for the analysis
+    t() %>%
+    # Add the colnames as the plot numbers
+    `colnames<-`(rownames(Taxa[[2]]))
+
+
+  # Select the adequate phylogenetic tree between the moss and liverworts ones
+  ifelse(Taxa[[2]]$Taxa == "Mosses", Phylo <- Mosses_Tree, Phylo <- Liver_Tree)
+
+# -- Compute the PIst metrics -- # 
+
+  Hardy_Metrics <- spacodiR::spacodi.calc(
+      sp.plot = Taxon,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
+      phy = Phylo,             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
+      all.together = TRUE,     # whether to treat all traits together or separately
+      prune = TRUE,
+      pairwise = TRUE)
+
+# -- Create a dataframe of metadata -- # 
+
+  MetaData <- Taxa[[2]] %>% 
+    # Create a "Plot" column 
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric) %>%
+    # Select only the metadata
+    dplyr::select((Plot:Taxa)) # | (ch_edaphic_eivdescombes_pixel_d:sradY))
+
+# Extract the values of each metric
+Pst <- Hardy_Metrics$pairwise.Pst %>% 
+  # Transform the pairwise 
+  PW_to_Vector(Colname = "Pst") %>%
+  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
+  # Plot A
+  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
+  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
+  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
+  # Plot B
+  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
+  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
+  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
+  # -- Add the absolute difference of altitude between the two plots (delta_z)
+  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
+  # -- Add the complete 3D-distance between the two plots (delta_xyz)
+  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+
+# Extract the values of each metric
+Bst <- Hardy_Metrics$pairwise.Bst %>% 
+  # Transform the pairwise 
+  PW_to_Vector(Colname = "Bst") %>%
+  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
+  # Plot A
+  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
+  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
+  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
+  # Plot B
+  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
+  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
+  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
+  # -- Add the absolute difference of altitude between the two plots (delta_z)
+  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
+  # -- Add the complete 3D-distance between the two plots (delta_xyz)
+  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+
+# Extract the values of each metric
+PIst <- Hardy_Metrics$pairwise.PIst %>% 
+  # Transform the pairwise 
+  PW_to_Vector(Colname = "PIst") %>%
+  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
+  # Plot A
+  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
+  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
+  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
+  # Plot B
+  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
+  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
+  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
+  # -- Add the absolute difference of altitude between the two plots (delta_z)
+  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
+  # -- Add the complete 3D-distance between the two plots (delta_xyz)
+  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+    
+# --- Combine the three altogether and pivot longer the metrics --- # 
+
+Phylo.beta <- purrr::reduce(list(Pst,Bst,PIst),full_join) %>%
+  # Pivot the metrics
+  pivot_longer(cols = c(Bst,Pst,PIst), values_to = "Value", names_to = "Metric") %>%
+  # Relocate columns
+  relocate(any_of(c("Metric","Values")),.after = PlotB) 
+
+# Return the good values
+return(Phylo.beta)
+
 }
+ 
