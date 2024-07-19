@@ -590,59 +590,49 @@ Phylo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
     # Select only the metadata
     dplyr::select((Plot:Taxa)) # | (ch_edaphic_eivdescombes_pixel_d:sradY))
 
-# Extract the values of each metric
+# -- Extract all Metrics -- #
+  
+  ## PST ##
+
 Pst <- Hardy_Metrics$pairwise.Pst %>% 
   # Transform the pairwise 
   PW_to_Vector(Colname = "Pst") %>%
   mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Plot A
-  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
-  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
-  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
-  # Plot B
-  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
-  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
-  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
-  # -- Add the absolute difference of altitude between the two plots (delta_z)
-  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
-  # -- Add the complete 3D-distance between the two plots (delta_xyz)
-  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+  # Join the metadata for both plots used in the pairwise computation. 
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) 
 
-# Extract the values of each metric
+  ## BST ##
+
 Bst <- Hardy_Metrics$pairwise.Bst %>% 
   # Transform the pairwise 
   PW_to_Vector(Colname = "Bst") %>%
   mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Plot A
-  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
-  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
-  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
-  # Plot B
-  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
-  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
-  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
-  # -- Add the absolute difference of altitude between the two plots (delta_z)
-  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
-  # -- Add the complete 3D-distance between the two plots (delta_xyz)
-  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+  # Join the metadata for both plots used in the pairwise computation. 
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) 
 
-# Extract the values of each metric
+  ## PIST ##
+
 PIst <- Hardy_Metrics$pairwise.PIst %>% 
   # Transform the pairwise 
   PW_to_Vector(Colname = "PIst") %>%
   mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Plot A
-  left_join(MetaData, c("PlotA" = "Plot")) %>%# Use a left join
-  relocate(any_of(c("Site_VDP", "Site_Suisse", 'x',"y","z")),.after = PlotB) %>% # Move the column
-  data.table::setnames(c('x',"y","z"),c('PlotA_x','PlotA_y','PlotA_z')) %>% # rename the column
-  # Plot B
-  left_join(MetaData, c("PlotB" = "Plot")) %>% # Use a left join
-  relocate(any_of(c("Site_VDP.y", "Site_Suisse.y", 'x',"y","z")),.after = PlotA_z) %>% # Move the column
-  data.table::setnames(c('x',"y","z","Site_VDP.x","Site_VDP.y","Site_Suisse.x","Site_Suisse.y"),c('PlotB_x','PlotB_y','PlotB_z',"Site_VDP_A","Site_VDP_B","Site_Suisse.A","Site_Suisse.B")) %>% # rename the column
-  # -- Add the absolute difference of altitude between the two plots (delta_z)
-  mutate(delta_z = abs(PlotA_z - PlotB_z), .after = PlotB_z) %>%
-  # -- Add the complete 3D-distance between the two plots (delta_xyz)
-  mutate(delta_xyz = sqrt((PlotB_x - PlotA_x)^2 + (PlotB_y - PlotA_y)^2 + (PlotB_z - PlotA_z)^2), .after = delta_z)
+  # Join the metadata for both plots used in the pairwise computation. 
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
     
 # --- Combine the three altogether and pivot longer the metrics --- # 
 
@@ -650,10 +640,157 @@ Phylo.beta <- purrr::reduce(list(Pst,Bst,PIst),full_join) %>%
   # Pivot the metrics
   pivot_longer(cols = c(Bst,Pst,PIst), values_to = "Value", names_to = "Metric") %>%
   # Relocate columns
-  relocate(any_of(c("Metric","Values")),.after = PlotB) 
+  select(order(colnames(.))) %>%
+  relocate(any_of(c("Taxa","Metric","Value")),.before = 1) %>%
+  relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
 # Return the good values
 return(Phylo.beta)
 
-}
- 
+} %>% set_names(c("Mosses","Liverworts"))
+
+#-------------------------#
+##### PLOT PHYLO BETA #####
+#-------------------------#
+
+# Add the stripes and break for both the plots used in the pairwise computation. 
+Beta.Plot <- Phylo.beta %>%
+  # Add the values
+  left_join(select(Total.filtered,'Site_VDP',"Break","Stripe"), by = c("Taxa","Site_VDP_A" = "Site_VDP")) %>% # Plot A
+  left_join(select(Total.filtered,'Site_VDP',"Break","Stripe"), by = c("Taxa","Site_VDP_B" = "Site_VDP"), suffix = c("_A", "_B")) %>% # Plot B
+  # Create a column that combines the two stripes
+  mutate(Stripe_AB = paste0(Stripe_A,"-",Stripe_B)) %>%
+  # Create a column that is the stripe distance between the two plots.
+  mutate(Stripe_distance = abs(as.numeric(Stripe_A)-as.numeric(Stripe_B)))
+
+# -- Boxplot of Metrics ~ Stripe distance -- #
+
+# FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
+  
+Beta.Wilcoxon <- Beta.Plot %>%
+  # Group the data
+  group_by(Taxa,Metric) %>%
+  # Compute the kruskall-test
+  wilcox_test(formula = Value ~ Stripe_distance, p.adjust.method = "bonferroni") %>%
+  # Transform "group1" and "group2" into numeric
+  mutate_at(c("group1", "group2"), as.numeric)
+
+
+# We need a column "y.position" for the plotting of the significance brackets
+y.position <- Beta.Plot %>%
+  # Group the data
+  group_by(Taxa,Metric) %>%
+  # Add the y.position with an increase of X%. 
+  summarise(y.position = max(Value) * 1.2) 
+  
+# Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
+Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
+  # Filter the data 
+  filter(group2 == group1 + 1) %>%
+  # Add the values of y.position 
+  left_join(y.position, by=c("Taxa","Metric")) 
+
+# SECOND STEP / Draw the boxplots.
+
+Beta_Boxplot_StripeDistance <- foreach(Taxon = unique(Beta.Wilcoxon.Adj$Taxa)) %dopar% {    
+
+  # Find the count of plots in each stripe
+Wilcox <- Beta.Wilcoxon.Adj %>%
+  # Select the wanted taxa
+  dplyr::filter(Taxa == Taxon)
+  
+
+Plot <- Beta.Plot %>%
+  # Select the wanted taxa
+  dplyr::filter(Taxa == Taxon) %>%
+  mutate_at("Stripe_distance", as.character) %>%
+  # Aes
+  ggplot(aes(x = Stripe_distance, y = Value, color = Stripe_distance, group = Stripe_distance)) +
+  # Plot all the values
+  geom_boxplot() +
+  # facet by Metric
+  facet_grid(. ~ Metric) +
+  # Add the significativity labels
+  stat_pvalue_manual(Wilcox, 
+                    label = "p.adj.signif",
+                    hide.ns = F) +
+  # Labels
+  xlab("Stripe distance") +
+  ylab("Metric values") +
+  labs(
+    color = "Stripe distances between the two plots.",
+    title = paste0("BoxPlot of metric values ~ Stripe distance"),
+    subtitle = paste0("Wilcox-tests were realized between adjacent stripe distances and significant results are displayed.",
+                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
+  )
+
+} %>% set_names(unique(Total.filtered$Taxa))
+
+
+# -- Boxplot of Metrics ~ Intra Stripe -- #
+
+# FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
+  
+Beta.Wilcoxon <- Beta.Plot %>%
+  # Filter the dataset to only keep the pairwise plots from the same stripe
+  filter(Stripe_A == Stripe_B) %>%
+  # Filter the dataset to remove the computation intra plot
+  filter(PlotA != PlotB) %>%
+  # Group the data
+  group_by(Taxa,Metric) %>%
+  # Compute the kruskall-test
+  wilcox_test(formula = Value ~ Stripe_AB, p.adjust.method = "bonferroni")
+
+# We need a column "y.position" for the plotting of the significance brackets
+y.position <- Beta.Plot %>%
+  # Filter the dataset to only keep the pairwise plots from the same stripe
+  filter(Stripe_A == Stripe_B) %>%
+  # Group the data
+  group_by(Taxa,Metric) %>%
+  # Add the y.position with an increase of X%. 
+  summarise(y.position = max(Value) * 1.2)
+  
+# Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
+Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
+  # Filter the data 
+  filter(group2 == group1 + 1) %>%
+  # Add the values of y.position 
+  left_join(y.position, by=c("Taxa","Metric")) 
+
+# SECOND STEP / Draw the boxplots.
+
+Beta_Boxplot_IntraStripe <- foreach(Taxon = unique(Beta.Wilcoxon.Adj$Taxa)) %dopar% {    
+
+  # Find the count of plots in each stripe
+  # Wilcox <- Beta.Wilcoxon.Adj %>%
+  # Select the wanted taxa
+  # dplyr::filter(Taxa == Taxon)
+  
+Plot <- Beta.Plot %>%
+  # Select the wanted taxa
+  dplyr::filter(Taxa == Taxon) %>%
+  # Filter the dataset to only keep the pairwise plots from the same stripe
+  dplyr::filter(Stripe_A == Stripe_B) %>%
+  dplyr::filter(PlotA != PlotB) %>%
+  mutate_at("Stripe_AB", as.character) %>%
+  # Aes
+  ggplot(aes(x = Stripe_AB, y = Value, color = Stripe_AB, group = Stripe_AB)) +
+  # Plot all the values
+  geom_boxplot() +
+  # facet by Metric
+  facet_grid(. ~ Metric) +
+  # Add the significativity labels
+  # stat_pvalue_manual(Wilcox, 
+  #                  label = "p.adj.signif",
+  #                  hide.ns = F) +
+  # Labels
+  xlab("Stripe distance") +
+  ylab("Metric values") +
+  labs(
+    color = "Stripe distances between the two plots.",
+    title = paste0("BoxPlot of metric values ~ Stripe distance"),
+    subtitle = paste0("Wilcox-tests were realized between adjacent stripe distances and significant results are displayed.",
+                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
+  )
+
+} %>% set_names(unique(Total.filtered$Taxa))
