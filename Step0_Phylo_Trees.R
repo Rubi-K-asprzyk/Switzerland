@@ -201,7 +201,7 @@ write.tree(phy = New_Liver_Tree, file = "PhyloTree/timetree50mod-liverwortsV2.nw
 # ----- MOSSES ----- # 
 
 # Tips to delete (They are deleted because they will not be find in the DB of occurence, therefore it is easier to verify that all tips are found afterwards)
-Tips_deletion <- c("Calliergon_cordifolium","Schistidium_papillosum","Schistidium_helveticum","Schistidium_elegantulum_subsp_wilsonii","Schistidium_grande","Schistidium_brunnescens_subsp_griseum","Schistidium_brunnescens_subsp_brunnescens","Schistidium_memnonium","Takakia_lepidozioides")
+Tips_deletion <- c("Calliergon_cordifolium","Schistidium_papillosum","Schistidium_helveticum","Schistidium_elegantulum_subsp_wilsonii","Schistidium_grande","Schistidium_brunnescens_subsp_griseum","Schistidium_brunnescens_subsp_brunnescens","Schistidium_memnonium","Takakia_lepidozioides","Campylium_protensum")
 
 # Tips to create a polytomy
 Tips_Poly_P_falcata <- c("Palustriella_falcata_var._sulcata","Palustriella.falcata_s.str.") # Palustriella_falcata
@@ -213,7 +213,7 @@ Tips_OLD <- c("Hypnum_callichroum",
               "Hygrohypnum_eugyrium",
               "Hypnum_procerrimum",
               "Thuidium_recognitum",
-              "Campylium_protensum",
+             # "Campylium_protensum",     # !
               "Drepanocladus_longifolius",
               "Campylium_chrysophyllum",
               "Campylophyllum_calcareum",
@@ -238,7 +238,7 @@ Tips_NEW <- c("Stereodon_callichrous",
               "Hygrohypnum_luridum",
               "Pseudostereodon_procerrimus",
               "Thuidium_assimile",
-              "Campylium_stellatum",
+             # "Campylium_stellatum",    # ! 
               "Drepanocladus_aduncus",
               "Campyliadelphus_chysophyllus",
               "Campylophyllopsis_calcarea",
