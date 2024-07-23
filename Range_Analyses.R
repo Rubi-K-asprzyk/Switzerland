@@ -31,7 +31,8 @@ p_load(doParallel, # Allow parallel computation
        betapart,
        tibble,
        spacodiR,
-       vegan)
+       vegan,
+       abdiv)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -50,12 +51,6 @@ cat(rule(left = "- Packages loaded - ", line_col = "white", line = " ", col = "g
 # --- #
 cat(rule(left = "PLOT THEME SETTINGS", line_col = "green", line = "-", col = "br_green"))
 # --- #
-
-# Create a color-scheme based on the taxa to use for all the plots. 
-color_scheme <-  c("Liverworts" = "yellowgreen", "Mosses" = "darkgreen")
-
-# Choose a palette (of the rColorBrewer package, max 2 breaks with the "Paired" palette. 
-Pal_col <- "Paired"
 
 # This theme extends the 'theme_light' that comes with ggplot2.
 # The "Lato" font is used as the base font. This is similar
@@ -194,45 +189,53 @@ Liver_Names <- colnames(liverData)[-c(1:4)]
 # Message
 cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green"))
 
-#-------------------------------------------#
-##### SR COMPUTATION AND PLOT FILTERING #####
-#-------------------------------------------#
+#-----------------------------------------------------#
+##### ALPHA METRIC COMPUTATION AND PLOT FILTERING #####
+#-----------------------------------------------------#
 
 # -- Computation of the wanted Metrics -- #
+
+  # Computed metrics :
+  # - Species Richness (SR)
+  # - Gini-Simpson Index (GS)
+  # - Phylogenetic Diversity (PD)
+  # - Mean Phylogenetic Diversity (MPD)
 
 # Input a threshold for the minimum number of species mandatory for the analyses (for mosses "M", and liverworts "L")
 Thresh_M <- 10
 Thresh_L <- 3
 
-# Total Bryophytes
-Bryo.filtered <- bryoData %>%
-  # Compute the Species Richness
-  mutate(SR = apply(bryoData[,5:ncol(bryoData)],1,sum), .after = y) %>%
-  # Select the plots based on the Species richness threshold.
-  dplyr::filter(SR > Thresh_M)
-
-# Number of plot lost : 224 / Number of plot left: 433
-cat(paste0("BRYOPHYTES - Number of plot left: ",nrow(Bryo.filtered)))
-
 # Total Mosses
 Moss.filtered <- mossData %>%
-  # Compute the Species Richness
+  # Compute the Phylogenetic Diversity as well as the Species Richness
   mutate(SR = apply(mossData[,5:ncol(mossData)],1,sum), .after = y) %>%
+  # Compute the Simpson Index
+  mutate(GS = apply(mossData[,5:ncol(mossData)],1,simpson), .after = y) %>%
   # Select the plots based on the Species richness threshold.
-  dplyr::filter(SR > Thresh_M)
+  dplyr::filter(SR > Thresh_M) %>%
+  # Compute the Phylogenetic Diversity
+  mutate(PD = picante::pd(samp = .[,Moss_Names],tree = Mosses_Tree)$PD, .after = y) %>%
+  # Pivot longer the metrics
+  pivot_longer(cols = c(SR,GS,PD), values_to = "Value", names_to = "Metric")
 
 # Number of plot lost : 234 / Number of plot left: 423
-cat(paste0("MOSSES - Number of plot left: ",nrow(Moss.filtered)))
+cat(paste0("MOSSES - Number of plot left: ",length(unique(Moss.filtered$Site_VDP))))
 
 # Total Liverworts
 Liver.filtered <- liverData %>%
   # Compute the Species Richness
   mutate(SR = apply(liverData[,5:ncol(liverData)],1,sum), .after = y) %>%
+  # Compute the Simpson Index
+  mutate(GS = apply(liverData[,5:ncol(liverData)],1,simpson), .after = y) %>%
   # Select the plots based on the Species richness threshold.
-  dplyr::filter(SR > Thresh_L)
+  dplyr::filter(SR > Thresh_L) %>%
+  # Compute the Phylogenetic Diversity
+  mutate(PD = picante::pd(samp = .[,Liver_Names],tree = Liver_Tree)$PD, .after = y) %>%
+  # Pivot longer the metrics
+  pivot_longer(cols = c(SR,GS,PD), values_to = "Value", names_to = "Metric")
 
 # Number of plot lost : 631 / Number of plot left: 26
-cat(paste0("LIVERWORTS - Number of plot left: ",nrow(Liver.filtered)))
+cat(paste0("LIVERWORTS - Number of plot left: ",length(unique(Liver.filtered$Site_VDP))))
 
 # Message
 cat(rule(left = "- Data filtered based on species richness - ", line_col = "white", line = " ", col = "green"))
@@ -242,9 +245,8 @@ cat(rule(left = "- Data filtered based on species richness - ", line_col = "whit
 #------------------------------------#
 
 # Joining of the environmental data and move the z column
-Bryo.filtered <- left_join(Bryo.filtered,bryoEnv) %>% relocate(z,.after = y)
-Moss.filtered <- left_join(Moss.filtered,bryoEnv) %>% relocate(z,.after = y)
-Liver.filtered <- left_join(Liver.filtered,bryoEnv) %>% relocate(z,.after = y)
+Moss.filtered <- left_join(Moss.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
+Liver.filtered <- left_join(Liver.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
 
 #----------------------#
 ##### RANGE CHOICE #####
@@ -256,31 +258,17 @@ breaks_nb = 10
 # Choose between weighted or unweighted altitudinal stripes "UW_Break" or "W_Break" for the analyses. 
 breaks_type <- "Weighted"  # Weighted / Unweighted
 
-# Total Bryophytes
-Bryo.filtered <- mutate(Bryo.filtered,
-  # Add the Taxa
-  Taxa = "Bryophytes",
-  # Add the desired breaks
-  Break = case_when(breaks_type == "Weighted" ~ cut_number(Bryo.filtered$z, n = breaks_nb, dig.lab = 4),
-                    breaks_type == "Unweighted" ~ cut(Bryo.filtered$z, breaks_nb, dig.lab = 4),
-                    .default = "OSKOUR"),
-  # Add the desired Stripe
-  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Bryo.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
-                     breaks_type == "Unweighted" ~ as.character(cut(Bryo.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
-                    .default = "OSKOUR"),
-  .after = z)
-
 # Total Mosses
 Moss.filtered <- mutate(Moss.filtered,
   # Add the Taxa
   Taxa = "Mosses",
   # Add the desired breaks
-  Break = case_when(breaks_type == "Weighted" ~ cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4),
-                    breaks_type == "Unweighted" ~ cut(Moss.filtered$z, breaks_nb, dig.lab = 4),
+  Break = case_when(breaks_type == "Weighted" ~ cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, right = FALSE), # Right = FALSE is used to have all breaks that start with a "[" to help for the correct ordering of the levels of the factor.
+                    breaks_type == "Unweighted" ~ cut(Moss.filtered$z, breaks_nb, dig.lab = 4, right = FALSE),
                     .default = "OSKOUR"),
   # Add the desired Stripe
-  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
-                     breaks_type == "Unweighted" ~ as.character(cut(Moss.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
+  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
+                     breaks_type == "Unweighted" ~ as.character(cut(Moss.filtered$z, breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
                     .default = "OSKOUR"),
   .after = z)
 
@@ -289,136 +277,128 @@ Liver.filtered <- mutate(Liver.filtered,
   # Add the Taxa
   Taxa = "Liverworts",
   # Add the desired breaks
-  Break = case_when(breaks_type == "Weighted" ~ cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4),
-                    breaks_type == "Unweighted" ~ cut(Liver.filtered$z, breaks_nb, dig.lab = 4),
+  Break = case_when(breaks_type == "Weighted" ~ cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, right = FALSE),
+                    breaks_type == "Unweighted" ~ cut(Liver.filtered$z, breaks_nb, dig.lab = 4,right = FALSE),
                     .default = "OSKOUR"),
   # Add the desired Stripe
-  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, labels = F)),
-                     breaks_type == "Unweighted" ~ as.character(cut(Liver.filtered$z, breaks_nb, dig.lab = 4, labels = F)),
+  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
+                     breaks_type == "Unweighted" ~ as.character(cut(Liver.filtered$z, breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
                     .default = "OSKOUR"),
   .after = z)
 
 # Message
 cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " ", col = "green"))
 
-#-------------------------------#
-##### PLOT SPECIES RICHNESS #####
-#-------------------------------#
+#------------------------------#
+##### PLOT ALPHA DIVERSITY #####
+#------------------------------#
 
 # Create a global dataframe containing the results for all taxa. 
 Total.filtered <- 
   # Bind the all the wanted taxa
-  purrr::reduce(list(Bryo.filtered,Moss.filtered,Liver.filtered),full_join, by = c("Site_VDP", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "SR")) %>%
+  purrr::reduce(list(Moss.filtered,Liver.filtered),full_join, by = c("Site_VDP", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "Metric", "Value")) %>%
   # Select only the wanted data
-  dplyr::select("Site_VDP":"SR") %>%
+  dplyr::select("Site_VDP":"Value") %>%
   # Group the data
-  group_by(Taxa, Break) %>%
+  group_by(Taxa, Break, Metric) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
-  mutate(Sum = sum(SR), Count=n(), Var_Value = var(SR), Mean_Value = mean(SR)) %>%
-  # Sort the values by "z" across for both Taxa.
-  group_by(Taxa) %>%
-  arrange(z, .by_group = TRUE)
+  mutate(Sum_Value = sum(Value), Mean_Value = mean(Value),Var_Value = var(Value), Count=n()) %>%
+  # -!- Reorder the breaks -!- #
+  group_by(Taxa,Metric) %>% 
+  # Arrange by the altitude to order in the same time the breaks
+  arrange(z, .by_group = TRUE) %>%
+  mutate(Break = factor(Break, levels = unique(.$Break)))
 
-
+  
 # Compute and create the summary table of the metric(s) splitted between stripes for each taxa
-SR.summary <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {
 
-  # Draw the plot 
-  Plot <- Total.filtered %>%
-    # Select the wanted taxa
-    dplyr::filter(Taxa == Taxon) %>%
-    # Group the data
-    group_by(Break) %>%
-    # Compute the summary stat
-    get_summary_stats(SR,type = "common") %>% # Compute the summary statistics for each groups 
-    # Draw the summary statistics
-    ggsummarytable(
-      x = "Break",                             # Split by stripes
-      y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
-      digits = 2,                            # Number of digits 
-      size = 12,                              # Size of the text
-      color = "Break",                         # Color by stripes
-      ggtheme = arrange_theme() +            # Theme
-       theme(legend.position = "none")
-      )
-      
-  # Return the plot  
-  return(Plot)
-
-} %>% set_names(unique(Total.filtered$Taxa))
+Alpha.summary <- Total.filtered %>%
+  # Group the data
+  group_by(Taxa, Break, Metric) %>%
+  # Compute the summary stat
+  get_summary_stats(Value,type = "common") %>% # Compute the summary statistics for each groups 
+  # Draw the summary statistics
+  ggsummarytable(
+    x = "Break",                           # Split by stripes
+    y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
+    digits = 2,                            # Number of digits 
+    size = 4,                             # Size of the text
+    color = "Break",                       # Color by stripes
+    facet.by = c("Metric","Taxa"),
+    scales = "free_x", 
+    ggtheme = arrange_theme() +            # Theme
+     theme(legend.position = "none")
+    ) +
+  # Theme
+  theme(axis.text.x=element_text(angle = 90, hjust = 0))
+ 
     
 # Compute and create the summary table of the metric(s) unsplitted between stripes
-SR.summary.unsplitted <- Total.filtered %>%
+Alpha.summary.unsplitted <- Total.filtered %>%
 # Group the data
-group_by(Taxa) %>%
+group_by(Taxa, Metric) %>%
 # Compute the summary stat
-get_summary_stats(SR,type = "common") %>% # Compute the summary statistics for each groups 
+get_summary_stats(Value,type = "common") %>% # Compute the summary statistics for each groups 
 # Draw the summary statistics
 ggsummarytable(x = "Taxa",                          # Split by stripes
                y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
                digits = 2,                            # Number of digits 
-               size = 12,                              # Size of the text
+               size = 10,                             # Size of the text
+               facet.by = c("Metric","Taxa"),
+               scales = "free_x", 
                ggtheme = arrange_theme() +            # Theme
                  theme(legend.position = "none")
 )
 
 # - Distribution of SR points ~ Altitudinal stripes - # 
 
-SR_Points <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
-
-  # Find the count of plots in each stripe
-SR.mean <- Total.filtered %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon) %>%
+# Find the mean value of z for x_axis centering and Value for y-axis
+Value.Mean <- Total.filtered %>%
   # Group the data
-  group_by(Break) %>%
+  group_by(Taxa,Metric,Break) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
-  summarise(z = mean(z), Mean_Value = mean(SR)) %>%
-  arrange(z)
+  summarise(z = mean(z), Mean_Value = mean(Value)) %>%
+  # reorder z by group to have the breaks in the good order
+  arrange(z, .by_group = TRUE) %>%
+  # Transform the breaks into factors
+  mutate(Break = factor(Break))
 
-Plot <- Total.filtered %>% 
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon) %>%
-  # Reorder the break names
-  mutate(Break = factor(Break, levels = SR.mean$Break)) %>%
+# Draw the plots.
+Alpha.scatter <- Total.filtered %>% 
   # Aes
-  ggplot(aes(x = z, y = SR, color = Break)) + # Reorder the factors correctly
+  ggplot(aes(x = z, y = Value, color = Break)) + # Reorder the factors correctly
   # Plot all the values
   geom_point() +
+  # Facet the plot
+  facet_grid(Metric ~ Taxa,
+            scales = "free_y") +
   # Plot the connected scatter plot of the mean values for each altitudinal stripe.
   new_scale_color() + # Define scales before initiating a new one
   # Use the new scale
-  geom_point(data = SR.mean, aes(y = Mean_Value), size = 1) +
+  geom_point(data = Value.Mean, aes(y = Mean_Value), size = 1) +
   geom_line(aes(y = Mean_Value),linewidth = 1, alpha = 0.7, group = 1) +
   # Guides
   guides(size = "none") +
   # Labels
   xlab("Altitude") +
-  ylab("Species Richness") +
   labs(
     color = "Stripe altitudinal limits",
-    title = paste0("ScatterPlot of species richness ~ Altitude"),
+    title = paste0("ScatterPlot of metrics ~ Altitude"),
     subtitle = paste0(
-      "Black dotted line represent the mean species richness for each of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "Weighted",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
-
-  # Return the plot
-  return(Plot)
-   
-} %>% set_names(unique(Total.filtered$Taxa))
-    
+      "Black dotted line represent the mean metric value for each of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "Weighted",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
 
 # - Boxplots of SR points ~ Altitudinal stripes - # 
 
 # FIRST STEP / Compute the wilcoxon tests between all the stripes to after display them on the boxplot.
   
-SR.Wilcoxon <- Total.filtered %>%
+Metric.Wilcoxon <- Total.filtered %>%
   # Group and filter the data with variance == 0
-  group_by(Taxa,Break) %>%
+  group_by(Taxa,Break,Metric) %>%
   filter(Var_Value != 0) %>%
   # Group the data
-  group_by(Taxa) %>%
+  group_by(Taxa,Metric) %>%
   # Compute the kruskall-test
-  wilcox_test(formula = SR ~ Stripe, p.adjust.method = "bonferroni") %>%
+  wilcox_test(formula = Value ~ Stripe, p.adjust.method = "bonferroni") %>%
   # Transform "group1" and "group2" into numeric
   mutate_at(c("group1", "group2"), as.numeric ) %>%
   # Add a column that is the "stripe distance" between the distribution compared
@@ -427,37 +407,30 @@ SR.Wilcoxon <- Total.filtered %>%
 # We need a column "y.position" for the plotting of the significance brackets
 y.position <- Total.filtered %>%
   # Group the data
-  group_by(Taxa) %>%
+  group_by(Taxa,Metric) %>%
   # Add the y.position with an increase of X%. 
-  summarise(y.position = max(SR) * 1) 
+  summarise(y.position = max(Value) * 1.1) 
   
 # Filter the precedent data_frame to only keep the values of stripe distance == 1
-SR.Wilcoxon.Adj <- SR.Wilcoxon %>%
-  # Filter the data 
-  filter(Stripe_Distance == 1) %>%
+Metric.Wilcoxon.Adj <- Metric.Wilcoxon %>%
+  # Filter the data to only keep adjacent stripes eventually 
+  # filter(Stripe_Distance == 1) %>%
   # Add the values of y.position 
-  left_join(y.position, by=c("Taxa")) 
+  left_join(y.position, by=c("Taxa","Metric"))
 
 # SECOND STEP / Draw the boxplots.
-
-SR_Boxplots <- foreach(Taxon = unique(Total.filtered$Taxa)) %dopar% {    
-
-  # Find the count of plots in each stripe
-Wilcox <- SR.Wilcoxon.Adj %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon)
-
 Plot <- Total.filtered %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon) %>%
   # Aes
-  ggplot(aes(x = Break, y = SR, color = Break), group = Break) +
+  ggplot(aes(x = Break, y = Value, color = Break), group = Break) +
   # Plot all the values
   geom_boxplot() +
+    # Facet the plot
+  facet_grid(Metric ~ Taxa,
+            scales = "free") +
   # Add the significativity labels
-  stat_pvalue_manual(Wilcox, 
+  stat_pvalue_manual(Metric.Wilcoxon.Adj, 
                     label = "p.adj.signif",
-                    hide.ns = F) +
+                    hide.ns = T) +
   # Labels
   xlab("Altitudinal stripes") +
   ylab("Metric values") +
@@ -467,8 +440,6 @@ Plot <- Total.filtered %>%
     subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
                           "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
   )
-
-} %>% set_names(unique(Total.filtered$Taxa))
 
 
 #-------------------------------#
