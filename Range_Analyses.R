@@ -13,6 +13,9 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 ##### INITIALISATION #####
 #------------------------#
 
+# Set Working Directory
+setwd("/home/thibault/Documents/PhD-Thesis/Research/Switzerland")
+
 # Install/load pacman. 
 suppressPackageStartupMessages(if(!require(pacman)){install.packages("pacman");library(pacman)})
 
@@ -440,7 +443,6 @@ Alpha.Boxplot <- Total.filtered %>%
                           "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
   )
 
-
 #-------------------------------#
 ##### BETA METRICS COMPUTATION #####
 #-------------------------------#
@@ -465,7 +467,7 @@ Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
 
   Sorensen <- Data %>%
     # Select only the occurence data
-    select(!colnames(MetaData)) %>%
+    dplyr::select(!colnames(MetaData)) %>%
     # Compute the Sorensen index
     beta.pair(x = ., index.family = "sorensen") %>%
     # Transform into a matrix
@@ -484,7 +486,7 @@ Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
 
   Jaccard <- Data %>%
     # Select only the occurence data
-    select(!colnames(MetaData)) %>%
+    dplyr::select(!colnames(MetaData)) %>%
     # Compute the Sorensen index
     beta.pair(x = ., index.family = "jaccard") %>%
     # Transform into a matrix
@@ -500,7 +502,7 @@ Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
     mutate(Taxa = unique(Data$Taxa), .before = 1)
 
   # Change the metadata to NOT contains the alpha metrics results
-  MetaData <- select(MetaData, !c(SR,GS,PD))
+  MetaData <- dplyr::select(MetaData, !c(SR,GS,PD))
 
   # -- Bind the metrics together -- #
   Taxo_Beta <- merge(Sorensen,Jaccard) %>%
@@ -627,7 +629,7 @@ Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Pivot the metrics
   pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
   # Relocate columns
-  select(order(colnames(.))) %>%
+  dplyr::select(order(colnames(.))) %>%
   relocate(any_of(c("Taxa","Metric","Value")),.before = 1) %>%
   relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
@@ -659,7 +661,7 @@ Beta.results <- full_join(Phylo.beta,Taxo.beta)  %>%
 
 # FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
   
-Beta.Wilcoxon <- Beta.Plot %>%
+Beta.Wilcoxon <- Beta.results %>%
   # Group the data
   group_by(Taxa,Metric) %>%
   # Filter the dataset to remove the computation intra plot
@@ -669,22 +671,44 @@ Beta.Wilcoxon <- Beta.Plot %>%
   # Transform "group1" and "group2" into numeric
   mutate_at(c("group1", "group2"), as.numeric)
 
-
 # We need a column "y.position" for the plotting of the significance brackets
-y.position <- Beta.Plot %>%
+y.position <- Beta.results%>%
   # Group the data
   group_by(Taxa,Metric) %>%
   # Add the y.position with an increase of X%. 
-  summarise(y.position = max(Value) * 1.2) 
+  summarise(y.position = max(Value) * 1.05) 
   
 # Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
 Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
-  # Filter the data 
+  # Filter the data to have eventually only the adjacent stripes
   filter(group2 == group1 + 1) %>%
   # Add the values of y.position 
-  left_join(y.position, by=c("Taxa","Metric")) 
+  left_join(y.position, by=c("Taxa","Metric")) %>%
+  # WARNING: Brackets are moved to the left, therefore, we will move them to the right
+  
 
 # SECOND STEP / Draw the boxplots.
+
+Beta_Boxplot_StripeDistance <- Beta.results %>%
+  # Draw the plot
+  ggboxplot(
+    x = "Stripe_distance", y = "Value", fill = "Stripe_distance",
+    facet = c("Metric", "Taxa"),
+    scales = "free",
+    ggtheme = arrange_theme()
+    ) + 
+  # Add the significance levels
+  stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0.1, step.group.by = "Metric") +
+    # Labels
+  xlab("Altitudinal stripes") +
+  ylab("Metric values") +
+  labs(
+    color = "Stripe altitudinal limits",
+    title = paste0("BoxPlot of metric values ~ Altitudinal stripes number"),
+    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
+                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
+  )
+
 
 Beta_Boxplot_StripeDistance <- foreach(Taxon = unique(Beta.Wilcoxon.Adj$Taxa)) %dopar% {    
 
@@ -693,7 +717,6 @@ Wilcox <- Beta.Wilcoxon.Adj %>%
   # Select the wanted taxa
   dplyr::filter(Taxa == Taxon)
   
-
 Plot <- Beta.Plot %>%
   # Select the wanted taxa
   dplyr::filter(Taxa == Taxon) %>%

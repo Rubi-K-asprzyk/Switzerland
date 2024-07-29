@@ -3,6 +3,6 @@
 /.~lock.FinalMatrixLv95_SynChangedV3.csv#
 /.~lock.tibo.csv#
 .Rproj.user
-.RData
+*.RData
 .Rhistory
 *.Rproj
