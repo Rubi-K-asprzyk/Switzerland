@@ -685,7 +685,8 @@ Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
   # Add the values of y.position 
   left_join(y.position, by=c("Taxa","Metric")) %>%
   # WARNING: Brackets are moved to the left, therefore, we will move them to the right
-  
+  mutate(group1 = group1 + 1) %>%
+  mutate(group2 = group2 + 1)
 
 # SECOND STEP / Draw the boxplots.
 
@@ -698,7 +699,7 @@ Beta_Boxplot_StripeDistance <- Beta.results %>%
     ggtheme = arrange_theme()
     ) + 
   # Add the significance levels
-  stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0.1, step.group.by = "Metric") +
+  stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0, step.group.by = "Metric") +
     # Labels
   xlab("Altitudinal stripes") +
   ylab("Metric values") +
@@ -709,46 +710,11 @@ Beta_Boxplot_StripeDistance <- Beta.results %>%
                           "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
   )
 
-
-Beta_Boxplot_StripeDistance <- foreach(Taxon = unique(Beta.Wilcoxon.Adj$Taxa)) %dopar% {    
-
-  # Find the count of plots in each stripe
-Wilcox <- Beta.Wilcoxon.Adj %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon)
-  
-Plot <- Beta.Plot %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon) %>%
-  mutate_at("Stripe_distance", as.character) %>%
-  # Aes
-  ggplot(aes(x = Stripe_distance, y = Value, color = Stripe_distance, group = Stripe_distance)) +
-  # Plot all the values
-  geom_boxplot() +
-  # facet by Metric
-  facet_grid(. ~ Metric) +
-  # Add the significativity labels
-  stat_pvalue_manual(Wilcox, 
-                    label = "p.adj.signif",
-                    hide.ns = F) +
-  # Labels
-  xlab("Stripe distance") +
-  ylab("Metric values") +
-  labs(
-    color = "Stripe distances between the two plots.",
-    title = paste0(Taxon,": BoxPlot of metric values ~ Stripe distance"),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripe distances and significant results are displayed.",
-                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
-  )
-
-} %>% set_names(unique(Beta.Wilcoxon.Adj$Taxa))
-
-
 # -- Boxplot of Metrics ~ Intra Stripe -- #
 
 # FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
   
-Beta.Wilcoxon <- Beta.Plot %>%
+Beta.Wilcoxon <- Beta.results %>%
   # Filter the dataset to only keep the pairwise plots from the same stripe
   filter(Stripe_A == Stripe_B) %>%
   # Filter the dataset to remove the computation intra plot
@@ -759,13 +725,13 @@ Beta.Wilcoxon <- Beta.Plot %>%
   wilcox_test(formula = Value ~ Stripe_AB, p.adjust.method = "bonferroni")
 
 # We need a column "y.position" for the plotting of the significance brackets
-y.position <- Beta.Plot %>%
+y.position <- Beta.results %>%
   # Filter the dataset to only keep the pairwise plots from the same stripe
   filter(Stripe_A == Stripe_B) %>%
   # Group the data
   group_by(Taxa,Metric) %>%
   # Add the y.position with an increase of X%. 
-  summarise(y.position = max(Value) * 1.2)
+  summarise(y.position = max(Value) * 1.05)
   
 # Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
 # Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
@@ -776,16 +742,7 @@ y.position <- Beta.Plot %>%
 
 # SECOND STEP / Draw the boxplots.
 
-Beta_Boxplot_IntraStripe <- foreach(Taxon = unique(Beta.Wilcoxon.Adj$Taxa)) %dopar% {    
-
-  # Find the count of plots in each stripe
-  Wilcox <- Beta.Wilcoxon.Adj %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon)
-  
-Plot <- Beta.Plot %>%
-  # Select the wanted taxa
-  dplyr::filter(Taxa == Taxon) %>%
+Beta_Boxplot_IntraStripe <- Beta.results %>%
   # Filter the dataset to only keep the pairwise plots from the same stripe
   dplyr::filter(Stripe_A == Stripe_B) %>%
   dplyr::filter(PlotA != PlotB) %>%
@@ -793,36 +750,30 @@ Plot <- Beta.Plot %>%
   # Reorder the stripes to have 10-10 effectively last
   mutate(Stripe_AB = fct_relevel(Stripe_AB,mixedsort(unique(.$Stripe_AB)))) %>%
   # Aes
-  ggplot(aes(x = Stripe_AB, y = Value, color = Stripe_AB, group = Stripe_AB)) +
-  # Plot all the values
-  geom_boxplot() +
-  # facet by Metric
-  facet_grid(. ~ Metric) +
-  # Add the significativity labels
-   stat_pvalue_manual(Wilcox, 
-                    label = "p.adj.signif",
-                    hide.ns = F) +
-  #Labels
-  xlab("Stripe") +
+  ggboxplot(
+    x = "Stripe_AB", y = "Value", fill = "Stripe_AB",
+    facet = c("Metric", "Taxa"),
+    scales = "free",
+    ggtheme = arrange_theme()
+    ) + 
+  # Add the significance levels
+  stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0, step.group.by = "Metric") +
+    # Labels
+  xlab("Altitudinal stripes") +
   ylab("Metric values") +
   labs(
-    color = "Intra-Stripe comparison.",
-    title = paste0(Taxon,": BoxPlot of metric values ~ Stripe number"),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripe distances and significant results are displayed.",
+    color = "Stripe altitudinal limits",
+    title = paste0("BoxPlot of metric values ~ Altitudinal stripes number"),
+    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
                           "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
   )
-
-} %>% set_names(unique(Beta.Wilcoxon.Adj$Taxa))
 
 # -- Scatterplot of Metrics ~ z-distance -- #
 
 # Draw the scatterplot.
 
-Beta_Scatterplot <- foreach(Taxon = unique(Beta.Plot$Taxa)) %dopar% {    
-  
-Plot <- Beta.Plot %>%
+Beta_Scatterplot <- Beta.results %>%
   # Select the wanted taxa (and remove intra plot computation)
-  dplyr::filter(Taxa == Taxon) %>%
   dplyr::filter(PlotA != PlotB) %>%
   mutate_at("Stripe_distance", as.character) %>%
   # Aes
@@ -830,11 +781,7 @@ Plot <- Beta.Plot %>%
   # Plot all the values
   geom_point() +
   # facet by Metric
-  facet_grid(. ~ Metric) +
-  # Add the significativity labels
-  # stat_pvalue_manual(Wilcox, 
-  #                  label = "p.adj.signif",
-  #                  hide.ns = F) +
+  facet_grid(Taxa ~ Metric) +
   # Labels
   xlab("Z-Distance between plots.") +
   ylab("Metric values.") +
@@ -843,41 +790,107 @@ Plot <- Beta.Plot %>%
     title = paste0("Scatterplot of metric values ~ Altitudinal distance")
   )
 
-} %>% set_names(unique(Beta.Plot$Taxa))
-
 #---------------------#
 ##### MANTEL TEST #####
 #---------------------#
 
 # Compute a Mantel test between the PIst and the z-distance between the two plots used used in the comparison.
 
-# -- Get the PIst matrix -- # 
+## We need to recompute the metrics without vectorizing them to compute mantel tests
 
-# Prepare the data
-Taxon <- Moss.filtered %>%
-  rownames_to_column(var = "Plot") %>%
-  mutate_at("Plot", as.numeric) %>%
-  # Select only the occurence data that is comprised between the columns "SR" and "ch_edaphic_eivdescombes_pixel_d"
-  select(!(Plot:SR) & !(ch_edaphic_eivdescombes_pixel_d:sradY)) %>%
-  # Transpose the data for the analysis
-  t() %>%
-  # Add the colnames as the plot numbers
-  `colnames<-`(rownames(Moss.filtered))
+Mantel.Data <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% { 
 
-# Compute the PIst
-Hardy_Metrics <- spacodiR::spacodi.calc(
-    sp.plot = Taxon,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
-    phy = Mosses_Tree,             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
+  # Add the rowname as a column to keep this info
+  Data <- Taxa %>%
+    # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
+    pivot_wider(names_from = Metric, values_from = Value) %>%
+    # Create a "Plot" column
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric)
+
+  # Get the Metadata
+  MetaData <- Data %>% 
+    # Select only the Metadata (based on the species names )
+    dplyr::select(!any_of(c(Moss_Names,Liver_Names)))
+
+  # -- Sorensen -- # 
+
+  Sorensen <- Data %>%
+    # Select only the occurence data
+    dplyr::select(!colnames(MetaData)) %>%
+    # Compute the Sorensen index
+    beta.pair(x = ., index.family = "sorensen") %>%
+    # Transform into a matrix
+    lapply(as.matrix) 
+
+  # -- Jaccard -- # 
+
+  Jaccard <- Data %>%
+    # Select only the occurence data
+    dplyr::select(!colnames(MetaData)) %>%
+    # Compute the Sorensen index
+    beta.pair(x = ., index.family = "jaccard") %>%
+    # Transform into a matrix
+    lapply(as.matrix) 
+
+  # -- Hardy Metrics -- #
+
+  # Prepare the data
+    Data_Hardy <- Data %>%
+    # Select only the occurence data
+    dplyr::select(!colnames(MetaData)) %>%
+    # Transpose the data for the analysis
+    t() %>%
+    # Add the colnames as the plot numbers
+    `colnames<-`(rownames(Data))
+
+  # Select the good phylogenetic tree.
+  Phylo <- Mosses_Tree
+  if(unique(Data$Taxa) == "Liverworts") {Phylo <- Liver_Tree}
+
+  # Compute the PIst
+  Hardy_Metrics <- spacodiR::spacodi.calc(
+    sp.plot = Data_Hardy,    # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
+    phy = Phylo,       # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
     all.together = TRUE,     # whether to treat all traits together or separately
     prune = TRUE,
     pairwise = TRUE)
 
-# Extract the PIst
-PIst <- Hardy_Metrics$pairwise.PIst %>%
-  as.dist()
+  # -- Extract all the Metrics we want to keep -- #
 
-# -- Get the environmental variable matrix (Z) -- # 
-Zdist <- dist(Moss.filtered$z, method = "euclidean")
+    # Hardy Metrics
+  PIst <- Hardy_Metrics$pairwise.PIst %>% as.dist()
+  Pst <- Hardy_Metrics$pairwise.Pst %>% as.dist()
+  Bst <- Hardy_Metrics$pairwise.Bst %>% as.dist()
+    # Sorensen Metrics
+  beta.sim <- Sorensen$beta.sim %>% as.dist()
+  beta.sne <- Sorensen$beta.sne %>% as.dist()
+  beta.sor <- Sorensen$beta.sor %>% as.dist()
+    # Jaccard Metrics
+  beta.jtu <- Jaccard$beta.jtu %>% as.dist()
+  beta.jne <- Jaccard$beta.jne %>% as.dist()
+  beta.jac <- Jaccard$beta.jac %>% as.dist()
 
-## Compute the Mantel test ##
-mantel(PIst,Zdist, method = "spearman", permutations = 9999, na.rm = TRUE)
+  # Return the results
+  return(list(PIst,Pst,Bst,beta.jac,beta.jne,beta.jtu,beta.sim,beta.sne,beta.sor,Data$z) %>%
+            setNames(c("PIst","Pst","Bst","beta.jac","beta.jne","beta.jtu","beta.sim","beta.sne","beta.sor","Zdist")))
+
+} %>% set_names(c("Mosses","Liverworts"))
+
+#### --- Computation of the Mantel Test --- # 
+
+  # Extract the Zdist and remove it from the Data
+  Zdist <- dist(Mantel.Data$Mosses$Zdist)
+
+  Taxa.Mantel <- Mantel.Data$Mosses
+  Taxa.Mantel$Zdist <- NULL
+
+  # Compute all the Mantel tests
+  Mantel <- foreach(Data = Taxa.Mantel) %do% {
+
+    # Compute the test
+    Test <- mantel(Data,Zdist, method = "spearman", permutations = 999, na.rm = TRUE)
+
+    # Return the results
+
+  } %>% set_names(names(Taxa.Mantel))
