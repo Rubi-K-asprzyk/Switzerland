@@ -205,7 +205,7 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
   # - Mean Phylogenetic Diversity (MPD)
 
 # Input a threshold for the minimum number of species mandatory for the analyses (for mosses "M", and liverworts "L")
-Thresh_M <- 10
+Thresh_M <- 3
 Thresh_L <- 3
 
 # Total Mosses
@@ -217,11 +217,25 @@ Moss.filtered <- mossData %>%
   # Select the plots based on the Species richness threshold.
   dplyr::filter(SR > Thresh_M) %>%
   # Compute the Phylogenetic Diversity
-  mutate(PD = picante::pd(samp = .[,Moss_Names],tree = Mosses_Tree)$PD, .after = y) %>%
-  # Pivot longer the metrics
-  pivot_longer(cols = c(SR,GS,PD), values_to = "Value", names_to = "Metric")
+  mutate(PD = picante::pd(samp = .[,Moss_Names],tree = Mosses_Tree)$PD, .after = y)
 
-# Number of plot lost : 234 / Number of plot left: 423
+# Extract the names of the metrics that are present
+Moss_Names_Present <- colnames(Moss.filtered[,colnames(Moss.filtered) %in% Moss_Names])
+# Compute and reorder the cophenetic distances
+Dis.Mosses <- cophenetic(Mosses_Tree)
+# Only keep the species that are present in the tree
+Moss_Names_Present <- Moss_Names_Present[Moss_Names_Present %in% colnames(Dis.Mosses)]
+# Reorder the distance matrix
+Dis.Mosses <- Dis.Mosses[Moss_Names_Present,Moss_Names_Present]
+  
+# Add the MPD to the dataframe
+Moss.filtered <- Moss.filtered %>%
+  # Compute the mean phylogenetic distance
+  mutate(MPD = picante::mpd(samp = .[,colnames(Dis.Mosses)], dis = Dis.Mosses), .after = y) %>%
+  # Pivot longer the metrics
+  pivot_longer(cols = c(SR,GS,PD,MPD), values_to = "Value", names_to = "Metric")
+
+
 cat(paste0("MOSSES - Number of plot left: ",length(unique(Moss.filtered$Site_VDP))))
 
 # Total Liverworts
@@ -233,11 +247,25 @@ Liver.filtered <- liverData %>%
   # Select the plots based on the Species richness threshold.
   dplyr::filter(SR > Thresh_L) %>%
   # Compute the Phylogenetic Diversity
-  mutate(PD = picante::pd(samp = .[,Liver_Names],tree = Liver_Tree)$PD, .after = y) %>%
+  mutate(PD = picante::pd(samp = .[,Liver_Names],tree = Liver_Tree)$PD, .after = y) 
+  
+# Extract the names of the metrics that are present
+Liver_Names_Present <- colnames(Liver.filtered[,colnames(Liver.filtered) %in% Liver_Names])
+# Compute and reorder the cophenetic distances
+Dis.Liver <- cophenetic(Liver_Tree)
+# Only keep the species that are present in the tree
+Liver_Names_Present <- Liver_Names_Present[Liver_Names_Present %in% colnames(Dis.Liver)]
+# Reorder the distance matrix
+Dis.Liver <- Dis.Liver[Liver_Names_Present,Liver_Names_Present]
+  
+# Add the MPD to the dataframe
+Liver.filtered <- Liver.filtered %>%
+  # Compute the mean phylogenetic distance
+  mutate(MPD = picante::mpd(samp = .[,colnames(Dis.Liver)], dis = Dis.Liver), .after = y) %>%
   # Pivot longer the metrics
-  pivot_longer(cols = c(SR,GS,PD), values_to = "Value", names_to = "Metric")
+  pivot_longer(cols = c(SR,GS,PD,MPD), values_to = "Value", names_to = "Metric")
 
-# Number of plot lost : 631 / Number of plot left: 26
+
 cat(paste0("LIVERWORTS - Number of plot left: ",length(unique(Liver.filtered$Site_VDP))))
 
 # Message
@@ -794,6 +822,8 @@ Beta_Scatterplot <- Beta.results %>%
 ##### MANTEL TEST #####
 #---------------------#
 
+# Mantel Test are only used for beta metrics (to compare matrices against matrices)
+
 # Compute a Mantel test between the PIst and the z-distance between the two plots used used in the comparison.
 
 ## We need to recompute the metrics without vectorizing them to compute mantel tests
@@ -894,3 +924,14 @@ Mantel.Data <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
     # Return the results
 
   } %>% set_names(names(Taxa.Mantel))
+
+
+#-----------------------------#
+##### PEARSON CORRELATION #####
+#-----------------------------#
+
+# Pearson correlations are used with alpha metrics against a variable (z)
+
+Pearson_Correlation <- Total.filtered %>%
+  group_by(Taxa, Metric) %>%
+  summarise(correlation = cor(Value, z))
