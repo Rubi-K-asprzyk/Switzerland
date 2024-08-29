@@ -13,6 +13,8 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 ##### INITIALISATION #####
 #------------------------#
 
+{
+
 # Set Working Directory
 setwd("/home/thibault/Documents/PhD-Thesis/Research/Switzerland")
 
@@ -192,6 +194,8 @@ Liver_Names <- colnames(liverData)[-c(1:4)]
 # Message
 cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green"))
 
+} # END OF INITIALISATION
+
 #--------------------------------------------------#
 ##### RANGE-ANALYSES: CREATION OF THE FUNCTION #####
 #--------------------------------------------------#
@@ -208,6 +212,14 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
 
   # - OUTPUTS - #
 
+  # - TEST - #
+  Data <- mossData
+  Sp_Names <- Moss_Names
+  Threshold <- 2
+  Alt_limits <- c(1000,1400,1800,2000,2200) # That makes 6 altitudinal ranges  /  Alt_limits <- c(1400,2000) # For the Liverworts
+  N_stripes <- 6
+  Weighted <- TRUE
+
   # - COMPUTED METRICS - # 
     # - Species Richness (SR)
     # - Gini-Simpson Index (GS)
@@ -215,28 +227,20 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
     # - Mean Phylogenetic Diversity (MPD)
     # - Mean Nearest Neighbour Distance (MNTD)
 
-#-----------------------------------------------------#
-##### ALPHA METRIC COMPUTATION AND PLOT FILTERING #####
-#-----------------------------------------------------#
+range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_stripes = 6, Weighted = TRUE) {
 
-# -- Computation of the wanted Metrics -- #
+  # ----- METRIC COMPUTATION ----- #
 
-
-
-# Input a threshold for the minimum number of species mandatory for the analyses (for mosses "M", and liverworts "L")
-Thresh_M <- 4
-Thresh_L <- 3
-
-# Total Mosses
-Moss.filtered <- mossData %>%
-  # Compute the Phylogenetic Diversity as well as the Species Richness
-  mutate(SR = apply(mossData[,5:ncol(mossData)],1,sum), .after = y) %>%
-  # Compute the Simpson Index
-  mutate(GS = apply(mossData[,5:ncol(mossData)],1,simpson), .after = y) %>%
-  # Select the plots based on the Species richness threshold.
-  dplyr::filter(SR > Thresh_M) %>%
-  # Compute the Phylogenetic Diversity
-  mutate(PD = picante::pd(samp = .[,Moss_Names],tree = Mosses_Tree)$PD, .after = y)
+  # Computation of the metrics and filtering of the data based on the specie richness Threshold
+  Data.filtered <- Data %>%
+    # Compute the Species Richness
+    mutate(SR = apply(Data[,Sp_Names], 1, sum), .after = y) %>%
+    # Compute the Gini-Simpson Index
+    mutate(GS = apply(mossData[, 5:ncol(mossData)], 1, simpson), .after = y) %>%
+    # Select the plots based on the Species richness threshold.
+    dplyr::filter(SR > Thresh_M) %>%
+    # Compute the Phylogenetic Diversity
+    mutate(PD = picante::pd(samp = .[, Moss_Names], tree = Mosses_Tree)$PD, .after = y)
 
 # Extract the names of the metrics that are present
 Moss_Names_Present <- colnames(Moss.filtered[,colnames(Moss.filtered) %in% Moss_Names])

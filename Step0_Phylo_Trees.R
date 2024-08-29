@@ -296,3 +296,22 @@ Moss_Missing <- Moss_Tips[!Moss_Tips %in% intersect(Moss_Tips,Moss_Names)]
 
 # Save the new tree
 write.tree(phy = New_Moss_Tree, file = "PhyloTree/timetree50mod-mossesV2.nwk")
+
+#--------------------------------------#
+##### CREATION OF NULL MODEL TREES #####
+#--------------------------------------#
+
+# Load the phylotrees
+Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverwortsV2.nwk")
+Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mossesV2.nwk")
+
+# Load the function "tip.shuffler" 
+source("Utilities/Tip_Shuffler.R")
+
+# Compute the NullModels
+Liver_NULL <- tip.shuffler(Tree = Liver_Tree, NM = 100)
+Mosses_NULL <- tip.shuffler(Tree = Mosses_Tree, NM = 100)
+
+# Save the trees
+write.tree(Liver_NULL,paste0(getwd(),"/PhyloTree/timetree-liverworts-NM.tree"))
+write.tree(Mosses_NULL,paste0(getwd(),"/PhyloTree/timetree-mosses-NM.tree"))
