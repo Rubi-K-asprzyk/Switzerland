@@ -205,6 +205,7 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
   # - ARGUMENTS - #
     # Data: A community matrix of occurence with plot in rows and species in column (with of without metadata associated).
     # Sp_Names: A vector of species names. 
+    # Phylo_Tree : Phylogenetic Tree associated with the dataset. 
     # Threshold: The minimum number of species wanted in each plot. (Default = 2).
     # Alt_limits: A vector of altitudinal limits to split the altitudinal gradient into stripes. (Default = NULL).
     # N_stripes: If {Alt_limits == NULL}, the number of stripes to split the altitudinal gradient. (Default = 6).
@@ -215,8 +216,9 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
   # - TEST - #
   Data <- mossData
   Sp_Names <- Moss_Names
-  Threshold <- 2
-  Alt_limits <- c(1000,1400,1800,2000,2200) # That makes 6 altitudinal ranges  /  Alt_limits <- c(1400,2000) # For the Liverworts
+  Phylo_Tree <- Mosses_Tree
+  Threshold <- 4 # Mosses only accept a threshold of 4
+  Alt_limits <- c(0,1000,1400,1800,2000,2200,Inf) # That makes 6 altitudinal # That makes 6 altitudinal ranges  /  Alt_limits <- c(1400,2000) # For the Liverworts
   N_stripes <- 6
   Weighted <- TRUE
 
@@ -236,132 +238,120 @@ range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_strip
     # Compute the Species Richness
     mutate(SR = apply(Data[,Sp_Names], 1, sum), .after = y) %>%
     # Compute the Gini-Simpson Index
-    mutate(GS = apply(mossData[, 5:ncol(mossData)], 1, simpson), .after = y) %>%
+    mutate(GS = apply(Data[,Sp_Names], 1, simpson), .after = y) %>%
     # Select the plots based on the Species richness threshold.
-    dplyr::filter(SR > Thresh_M) %>%
+    dplyr::filter(SR > Threshold) %>%
     # Compute the Phylogenetic Diversity
-    mutate(PD = picante::pd(samp = .[, Moss_Names], tree = Mosses_Tree)$PD, .after = y)
+    mutate(PD = picante::pd(samp = .[,Sp_Names], tree = Phylo_Tree)$PD, .after = y)
 
-# Extract the names of the metrics that are present
-Moss_Names_Present <- colnames(Moss.filtered[,colnames(Moss.filtered) %in% Moss_Names])
-# Compute and reorder the cophenetic distances
-Dis.Mosses <- cophenetic(Mosses_Tree)
-# Only keep the species that are present in the tree
-Moss_Names_Present <- Moss_Names_Present[Moss_Names_Present %in% colnames(Dis.Mosses)]
-# Reorder the distance matrix
-Dis.Mosses <- Dis.Mosses[Moss_Names_Present,Moss_Names_Present]
+    # Compute and reorder the cophenetic distances
+    Data.Diss <- cophenetic(Phylo_Tree)
+    # Only keep the species that are present in the tree
+    Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
+    # Reorder the distance matrix
+    Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
   
-# Add the MPD to the dataframe
-Moss.filtered <- Moss.filtered %>%
-  # Compute the mean phylogenetic distance
-  mutate(MPD = picante::mpd(samp = .[,colnames(Dis.Mosses)], dis = Dis.Mosses), .after = y) %>%
-  # Pivot longer the metrics
-  pivot_longer(cols = c(SR,GS,PD,MPD), values_to = "Value", names_to = "Metric")
+  # Add the MPD to the dataframe
+  Data.filtered <- Data.filtered %>%
+    # Compute the mean phylogenetic distance
+    mutate(MPD = picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Compute the mean nearest neighbour distance
+    mutate(MNTD = picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Pivot longer the metrics
+    pivot_longer(cols = c(SR,GS,PD,MPD,MNTD), values_to = "Value", names_to = "Metric")
 
+  # Message
+  cat(rule(left = paste0("- Data filtered based on species richness / THRESHOLD = ",Threshold," - "), line_col = "white", line = " ", col = "green"))
+  cat(paste0(" - Number of initial plots: ",length(unique(Data$Site_VDP))))
+  cat(paste0(" - Number of plot left: ",length(unique(Data.filtered$Site_VDP))))
+  cat(paste0(" - Number of plot eliminated: ",(length(unique(Data$Site_VDP)) - length(unique(Data.filtered$Site_VDP)))))
 
-cat(paste0("MOSSES - Number of plot left: ",length(unique(Moss.filtered$Site_VDP))))
+  # ----- ENVIRONMENTAL DATA MERGING ----- #####
 
-# Total Liverworts
-Liver.filtered <- liverData %>%
-  # Compute the Species Richness
-  mutate(SR = apply(liverData[,5:ncol(liverData)],1,sum), .after = y) %>%
-  # Compute the Simpson Index
-  mutate(GS = apply(liverData[,5:ncol(liverData)],1,simpson), .after = y) %>%
-  # Select the plots based on the Species richness threshold.
-  dplyr::filter(SR > Thresh_L) %>%
-  # Compute the Phylogenetic Diversity
-  mutate(PD = picante::pd(samp = .[,Liver_Names],tree = Liver_Tree)$PD, .after = y) 
-  
-# Extract the names of the metrics that are present
-Liver_Names_Present <- colnames(Liver.filtered[,colnames(Liver.filtered) %in% Liver_Names])
-# Compute and reorder the cophenetic distances
-Dis.Liver <- cophenetic(Liver_Tree)
-# Only keep the species that are present in the tree
-Liver_Names_Present <- Liver_Names_Present[Liver_Names_Present %in% colnames(Dis.Liver)]
-# Reorder the distance matrix
-Dis.Liver <- Dis.Liver[Liver_Names_Present,Liver_Names_Present]
-  
-# Add the MPD to the dataframe
-Liver.filtered <- Liver.filtered %>%
-  # Compute the mean phylogenetic distance
-  mutate(MPD = picante::mpd(samp = .[,colnames(Dis.Liver)], dis = Dis.Liver), .after = y) %>%
-  # Pivot longer the metrics
-  pivot_longer(cols = c(SR,GS,PD,MPD), values_to = "Value", names_to = "Metric")
+  # Joining of the environmental data and move the z column
+  Data.filtered <- left_join(Data.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
 
+  # --------------------------------------------------------------------------------------------------------------------------------- #
 
-cat(paste0("LIVERWORTS - Number of plot left: ",length(unique(Liver.filtered$Site_VDP))))
+  # ----- RANGE CHOICE ----- #
 
-# Message
-cat(rule(left = "- Data filtered based on species richness - ", line_col = "white", line = " ", col = "green"))
+    # Creation of the ranges based on the parameters entered in the function.
 
-#------------------------------------#
-##### ENVIRONMENTAL DATA MERGING #####
-#------------------------------------#
+  # If Alt_limits are entered, create the dataframe based on them.
+  if (is.null(Alt_limits) == FALSE) {
+    # Create a dataframe of intervals as well as corresponding stripe number
+    Range_Intervals <- paste0("[", Alt_limits[-length(Alt_limits)], "-", Alt_limits[-1], "[") %>%
+      # Transform as dataframe
+      data.frame(.) %>%
+      dplyr::rename("Range_Intervals" = ".") %>%
+      # Add the interval number corresponding
+      cbind(Range_Number = 1:nrow(.))
 
-# Joining of the environmental data and move the z column
-Moss.filtered <- left_join(Moss.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
-Liver.filtered <- left_join(Liver.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
+    # Create a fonction to find in which interval the altitude "Z" falls. Z is a unique value (not a whole vector).
+    Interval.finder <- function(Z) {
+      # Scan all intervals.
+      for (Int in 1:(length(Alt_limits) - 1)) {
+        # Find in which interval the Z fall.
+        if (Z >= Alt_limits[Int] & Z < Alt_limits[Int + 1]) {
+          # Return "Int", i.e the number of the interval
+          return(Int)
+        }
+      }
+    }
 
-#----------------------#
-##### RANGE CHOICE #####
-#----------------------#
+    # Apply this function on all plots altitude.
+    Range_Number <- foreach(Z = Data.filtered$z, .combine = c) %do% {
+      # Apply the function
+      Interval.finder(Z = Z)
+    }
 
-# Set the number breaks
-breaks_nb = 10
+    # Add the range to the data
+    Data.filtered <- Data.filtered %>%
+      # Add it
+      mutate(Range_Number = Range_Number, .after = z) %>%
+      # Add the range intervals.
+      right_join(Range_Intervals, by = "Range_Number") %>%
+      # Move the column
+      relocate(Range_Intervals, .before = Range_Number)
 
-# Choose between weighted or unweighted altitudinal stripes "UW_Break" or "W_Break" for the analyses. 
-breaks_type <- "Weighted"  # Weighted / Unweighted
-
-# Total Mosses
-Moss.filtered <- mutate(Moss.filtered,
-  # Add the Taxa
-  Taxa = "Mosses",
-  # Add the desired breaks
-  Break = case_when(breaks_type == "Weighted" ~ cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, right = FALSE), # Right = FALSE is used to have all breaks that start with a "[" to help for the correct ordering of the levels of the factor.
-                    breaks_type == "Unweighted" ~ cut(Moss.filtered$z, breaks_nb, dig.lab = 4, right = FALSE),
-                    .default = "OSKOUR"),
-  # Add the desired Stripe
-  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Moss.filtered$z, n = breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
-                     breaks_type == "Unweighted" ~ as.character(cut(Moss.filtered$z, breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
-                    .default = "OSKOUR"),
-  .after = z)
-
-# Total Liverworts
-Liver.filtered <- mutate(Liver.filtered,
-  # Add the Taxa
-  Taxa = "Liverworts",
-  # Add the desired breaks
-  Break = case_when(breaks_type == "Weighted" ~ cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, right = FALSE),
-                    breaks_type == "Unweighted" ~ cut(Liver.filtered$z, breaks_nb, dig.lab = 4,right = FALSE),
-                    .default = "OSKOUR"),
-  # Add the desired Stripe
-  Stripe = case_when(breaks_type == "Weighted" ~ as.character(cut_number(Liver.filtered$z, n = breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
-                     breaks_type == "Unweighted" ~ as.character(cut(Liver.filtered$z, breaks_nb, dig.lab = 4, labels = F, right = FALSE)),
-                    .default = "OSKOUR"),
-  .after = z)
+    # If Alt_limits are not entered, create N_stripes, weighted or not by the number of plots they contains
+  } else {
+    # Create the ranges
+    Data.filtered <- mutate(Data.filtered,
+      # Add the desired Range_Intervals
+      Range_Intervals = case_when(Weighted == TRUE ~ cut_number(Data.filtered$z, n = N_stripes, dig.lab = 4, right = FALSE), # Right = FALSE is used to have all breaks that start with a "[" to help for the correct ordering of the levels of the factor.
+        Weighted == FALSE ~ cut(Data.filtered$z, N_stripes, dig.lab = 4, right = FALSE),
+        .default = "OSKOUR"
+      ),
+      # Add the desired Range_Number
+      Range_Number = case_when(Weighted == TRUE ~ as.character(cut_number(Data.filtered$z, n = N_stripes, dig.lab = 4, labels = F, right = FALSE)),
+        Weighted == FALSE ~ as.character(cut(Data.filtered$z, N_stripes, dig.lab = 4, labels = F, right = FALSE)),
+        .default = "OSKOUR"
+      ),
+      .after = z
+    )
+  }
 
 # Message
 cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " ", col = "green"))
 
-#------------------------------#
-##### PLOT ALPHA DIVERSITY #####
-#------------------------------#
+  # --------------------------------------------------------------------------------------------------------------------------------- #
+
+  # ----- SUMMARISATION BY RANGE ----- #
 
 # Create a global dataframe containing the results for all taxa. 
-Total.filtered <- 
-  # Bind the all the wanted taxa
-  purrr::reduce(list(Moss.filtered,Liver.filtered),full_join, by = c("Site_VDP", "Site_Suisse", "x", "y", "z", "Taxa", "Break", "Stripe", "Metric", "Value")) %>%
+Data.filtered.summarize <- Data.filtered %>%
   # Select only the wanted data
   dplyr::select("Site_VDP":"Value") %>%
   # Group the data
-  group_by(Taxa, Break, Metric) %>%
+  group_by(Range_Number, Metric) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
   mutate(Sum_Value = sum(Value), Mean_Value = mean(Value),Var_Value = var(Value), Count=n()) %>%
   # -!- Reorder the breaks -!- #
-  group_by(Taxa,Metric) %>% 
+  group_by(Metric) %>% 
   # Arrange by the altitude to order in the same time the breaks
   arrange(z, .by_group = TRUE) %>%
-  mutate(Break = factor(Break, levels = unique(.$Break)))
+  mutate(Break = factor(Range_Number, levels = unique(.$Range_Number)))
 
   
 # Compute and create the summary table of the metric(s) splitted between stripes for each taxa
