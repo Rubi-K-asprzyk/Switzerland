@@ -37,7 +37,13 @@ p_load(doParallel, # Allow parallel computation
        tibble,
        spacodiR,
        vegan,
-       abdiv)
+       abdiv,
+       patchwork,
+       multcomp,
+       multcompView,
+       groupedstats,
+       emmeans,
+       stringr)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -200,6 +206,7 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
 ##### RANGE-ANALYSES: CREATION OF THE FUNCTION #####
 #--------------------------------------------------#
 
+
   # . Creation of a function "range-analyses" to realize all the wanted analyses for each taxa and threhold wanted . # 
 
   # - ARGUMENTS - #
@@ -280,7 +287,7 @@ range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_strip
   # If Alt_limits are entered, create the dataframe based on them.
   if (is.null(Alt_limits) == FALSE) {
     # Create a dataframe of intervals as well as corresponding stripe number
-    Range_Intervals <- paste0("[", Alt_limits[-length(Alt_limits)], "-", Alt_limits[-1], "[") %>%
+    Range_Intervals <- paste0("[", Alt_limits[-length(Alt_limits)], ";", Alt_limits[-1], "[") %>%
       # Transform as dataframe
       data.frame(.) %>%
       dplyr::rename("Range_Intervals" = ".") %>%
@@ -335,6 +342,7 @@ range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_strip
 # Message
 cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " ", col = "green"))
 
+
   # --------------------------------------------------------------------------------------------------------------------------------- #
 
   # ----- SUMMARISATION BY RANGE ----- #
@@ -355,135 +363,123 @@ Data.filtered.summarize <- Data.filtered %>%
 
   
 # Compute and create the summary table of the metric(s) splitted between stripes for each taxa
-
-Alpha.summary <- Total.filtered %>%
+Alpha.summary <- Data.filtered %>%
   # Group the data
-  group_by(Taxa, Break, Metric) %>%
+  group_by(Range_Intervals, Metric) %>%
   # Compute the summary stat
   get_summary_stats(Value,type = "common") %>% # Compute the summary statistics for each groups 
   # Draw the summary statistics
   ggsummarytable(
-    x = "Break",                           # Split by stripes
+    x = "Range_Intervals",                           # Split by stripes
     y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
     digits = 2,                            # Number of digits 
     size = 4,                             # Size of the text
-    color = "Break",                       # Color by stripes
-    facet.by = c("Metric","Taxa"),
+    color = "Range_Intervals",                       # Color by stripes
+    facet.by = c("Metric"),
     scales = "free_x", 
-    ggtheme = arrange_theme() +            # Theme
-     theme(legend.position = "none")
+    ggtheme = arrange_theme() + theme(legend.position = "none")
     ) +
   # Theme
-  theme(axis.text.x=element_text(angle = 90, hjust = 0))
- 
+  theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  # Labs
+  labs(subtitle = "Metrics summary ~ Altitudinal ranges entered.\nn = Number of plots.")
     
 # Compute and create the summary table of the metric(s) unsplitted between stripes
-Alpha.summary.unsplitted <- Total.filtered %>%
-# Group the data
-group_by(Taxa, Metric) %>%
-# Compute the summary stat
-get_summary_stats(Value,type = "common") %>% # Compute the summary statistics for each groups 
-# Draw the summary statistics
-ggsummarytable(x = "Taxa",                          # Split by stripes
-               y = c("n","min", "max", "mean","sd"),  # Choose the metrics we want to display
-               digits = 2,                            # Number of digits 
-               size = 5,                             # Size of the text
-               facet.by = c("Metric","Taxa"),
-               scales = "free_x", 
-               ggtheme = arrange_theme() +            # Theme
-                 theme(legend.position = "none")
-)
+Alpha.summary.unsplitted <- Data.filtered %>%
+  # Group the data
+  group_by(Metric) %>%
+  # Compute the summary stat
+  get_summary_stats(Value, type = "common") %>% # Compute the summary statistics for each groups
+  # Draw the summary statistics
+  ggsummarytable(
+    x = "Metric", # Split by stripes
+    y = c("n", "min", "max", "mean", "sd"), # Choose the metrics we want to display
+    digits = 2, # Number of digits
+    size = 5, # Size of the text
+    scales = "free_x",
+    ggtheme = arrange_theme() + # Theme
+      theme(legend.position = "none")
+  ) +
+  # Labs
+  labs(subtitle = "Metrics summary total.\nn = Number of plots.")
 
-# - Distribution of SR points ~ Altitudinal stripes - # 
+# Combination of both plots together.
+F1.Alpha.Summary <- (Alpha.summary | Alpha.summary.unsplitted) + plot_layout(widths = c(2, 1))
+
+# --------------------------------------------------------------------------------------------------------------------------------- #
+
+  # ----- PLOTTING THE SUMMARISATION BY RANGE ----- #
+
+# - Distribution of Metric Values ~ Range_Intervals - # 
 
 # Find the mean value of z for x_axis centering and Value for y-axis
-Value.Mean <- Total.filtered %>%
+Value.Mean <- Data.filtered %>%
   # Group the data
-  group_by(Taxa,Metric,Break) %>%
+  group_by(Metric,Range_Intervals) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
   summarise(z = mean(z), Mean_Value = mean(Value)) %>%
   # reorder z by group to have the breaks in the good order
-  arrange(z, .by_group = TRUE) %>%
-  # Transform the breaks into factors
-  mutate(Break = factor(Break))
+  arrange(z, .by_group = TRUE)
 
 # Draw the plots.
-Alpha.scatter <- Total.filtered %>% 
+Alpha.scatter <- Data.filtered %>%
   # Aes
-  ggplot(aes(x = z, y = Value, color = Break)) + # Reorder the factors correctly
+  ggplot(aes(x = z, y = Value, color = Range_Intervals)) + # Reorder the factors correctly
   # Plot all the values
   geom_point() +
   # Facet the plot
-  facet_grid(Metric ~ Taxa,
-            scales = "free_y") +
+  facet_grid(Metric ~ .,
+    scales = "free_y"
+  ) +
   # Plot the connected scatter plot of the mean values for each altitudinal stripe.
   new_scale_color() + # Define scales before initiating a new one
   # Use the new scale
-  geom_point(data = Value.Mean, aes(y = Mean_Value), size = 1) +
-  geom_line(aes(y = Mean_Value),linewidth = 1, alpha = 0.7, group = 1) +
+  geom_point(data = Value.Mean, aes(y = Mean_Value), size = 2) +
+  geom_line(data = Value.Mean, aes(y = Mean_Value), linewidth = 1, alpha = 0.7, group = 1) +
   # Guides
   guides(size = "none") +
   # Labels
   xlab("Altitude") +
   labs(
     color = "Stripe altitudinal limits",
-    title = paste0("ScatterPlot of metrics ~ Altitude"),
+    title = paste0("ScatterPlot of Metrics ~ Altitude, colored by altitudinal ranges."),
     subtitle = paste0(
-      "Black dotted line represent the mean metric value for each of the altitudinal stripes.\nAltitudinal stripes are",{ifelse(breaks_type == "Weighted",paste(" weighted by plot number i.e represent an equal number of plots."),paste(" unweighted by plot number i.e represent an equal geographical distance."))}))
+      "Black dotted line represent the mean metric value for each of the altitudinal stripes."
+    )
+  )
 
 # - Boxplots of Metrics Values ~ Altitudinal stripes - # 
 
-# FIRST STEP / Compute the wilcoxon tests between all the stripes to after display them on the boxplot.
-  
-Metric.Wilcoxon <- Total.filtered %>%
-  # Group and filter the data with variance == 0
-  group_by(Taxa,Break,Metric) %>%
-  filter(Var_Value != 0) %>%
-  # Group the data
-  group_by(Taxa,Metric) %>%
-  # Compute the kruskall-test
-  wilcox_test(formula = Value ~ Stripe, p.adjust.method = "bonferroni") %>%
-  # Transform "group1" and "group2" into numeric
-  mutate_at(c("group1", "group2"), as.numeric ) %>%
-  # Add a column that is the "stripe distance" between the distribution compared
-  mutate(Stripe_Distance = abs(group1 - group2))
+# Realization of an ANOVA of the metrics values ~  Range_Intervals * Metric
+anova <- aov(Value ~ Range_Intervals * Metric, data = Data.filtered)
 
-# We need a column "y.position" for the plotting of the significance brackets
-y.position <- Total.filtered %>%
-  # Group the data
-  group_by(Taxa,Metric) %>%
-  # Add the y.position with an increase of X%. 
-  summarise(y.position = max(Value) * 1.05) 
-  
-# Filter the precedent data_frame to only keep the values of stripe distance == 1
-Metric.Wilcoxon.Adj <- Metric.Wilcoxon %>%
-  # Filter the data to only keep adjacent stripes eventually 
-  # filter(Stripe_Distance == 1) %>%
-  # Add the values of y.position 
-  left_join(y.position)
+# Get (adjusted) means to have results groupes by metrics.
+model_means <- emmeans(object = anova,
+                       specs = ~ Range_Intervals | Metric) 
 
-# We will use ddboxplot instead of geom boxplot because it is easier to plot the significance brackets on each facet. 
+# Add significativity letters to each mean.
+model_means_cld <- cld(object = model_means,
+                       adjust = "sidak",
+                       Letters = letters,
+                       alpha = 0.05)
 
-Alpha.Boxplot <- Total.filtered %>%
-  # Draw the plot
-  ggboxplot(
-    x = "Break", y = "Value", fill = "Break",
-    facet = c("Metric", "Taxa"),
-    scales = "free",
-    ggtheme = arrange_theme()
-    ) + 
-  # Add the significance levels
-  # stat_pvalue_manual(Metric.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0.1, step.group.by = "Metric") +
-    # Labels
-  xlab("Altitudinal stripes") +
-  ylab("Metric values") +
-  labs(
-    color = "Stripe altitudinal limits",
-    title = paste0("BoxPlot of metric values ~ Altitudinal stripes number"),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
-                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
-  ) + # Theme
-  theme(axis.text.x=element_text(angle = 90, hjust = 0))
+# Draw the plot
+ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) + 
+  # Draw the bar
+  geom_bar(data = model_means_cld, stat = "identity", aes(fill = Range_Intervals), show.legend = FALSE) +
+  # Add the letter
+  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = emmean + (0.03* emmean)), vjust = -0.5) +
+  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
+  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
+  # Facet_wrap
+  facet_wrap(~Metric, scales = "free") + 
+  # Theme
+  theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  # Labs
+  labs(title ="Metrics summary ~ Altitudinal ranges entered.",
+    subtitle = "Separatedly per Metric, Metric means by altitudinal range followed by a common letter are not significantly different according to the Tukey-test")
+
+
 
 #-------------------------------#
 ##### BETA METRICS COMPUTATION #####
