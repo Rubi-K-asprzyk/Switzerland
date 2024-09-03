@@ -41,7 +41,6 @@ p_load(doParallel, # Allow parallel computation
        patchwork,
        multcomp,
        multcompView,
-       groupedstats,
        emmeans,
        stringr)
 
@@ -464,7 +463,7 @@ model_means_cld <- cld(object = model_means,
                        alpha = 0.05)
 
 # Draw the plot
-ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) + 
+Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) + 
   # Draw the bar
   geom_bar(data = model_means_cld, stat = "identity", aes(fill = Range_Intervals), show.legend = FALSE) +
   # Add the letter
@@ -479,31 +478,28 @@ ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) +
   labs(title ="Metrics summary ~ Altitudinal ranges entered.",
     subtitle = "Separatedly per Metric, Metric means by altitudinal range followed by a common letter are not significantly different according to the Tukey-test")
 
-
-
-#-------------------------------#
+#----------------------------------#
 ##### BETA METRICS COMPUTATION #####
-#-------------------------------#
+#----------------------------------#
 
-Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% { 
+  # ----- TAXONOMIC BETA ----- # 
 
   # Add the rowname as a column to keep this info
-  Data <- Taxa %>%
+  Beta.Data <- Data.filtered %>%
     # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
     pivot_wider(names_from = Metric, values_from = Value) %>%
     # Create a "Plot" column
     rownames_to_column(var = "Plot") %>%
     mutate_at("Plot", as.numeric)
 
-
   # Get the Metadata
-  MetaData <- Data %>% 
+  MetaData <- Beta.Data %>% 
     # Select only the Metadata (based on the species names )
-    dplyr::select(!any_of(c(Moss_Names,Liver_Names)))
+    dplyr::select(!any_of(Sp_Names))
 
   # -- Sorensen -- # 
 
-  Sorensen <- Data %>%
+  Sorensen <- Beta.Data %>%
     # Select only the occurence data
     dplyr::select(!colnames(MetaData)) %>%
     # Compute the Sorensen index
@@ -511,18 +507,17 @@ Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
     # Transform into a matrix
     lapply(as.matrix) 
 
-      # Transform it into a vector
+    # Transform it into a vector
   Sorensen <-
     lapply(names(Sorensen), function(x) {
-    PW_to_Vector(Sorensen[[x]], Colname=x)}) %>%
+      PW_to_Vector(Sorensen[[x]], Colname = x)
+    }) %>%
     # Merge the results altogether
-    purrr::reduce(merge) %>%
-    # Add back the taxa we worked with
-    mutate(Taxa = unique(Data$Taxa), .before = 1)
+    purrr::reduce(merge)
 
   # -- Jaccard -- # 
 
-  Jaccard <- Data %>%
+  Jaccard <- Beta.Data %>%
     # Select only the occurence data
     dplyr::select(!colnames(MetaData)) %>%
     # Compute the Sorensen index
@@ -535,73 +530,55 @@ Taxo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
     lapply(names(Jaccard), function(x) {
     PW_to_Vector(Jaccard[[x]], Colname=x)}) %>%
     # Merge the results altogether
-    purrr::reduce(merge) %>%
-    # Add back the taxa we worked with
-    mutate(Taxa = unique(Data$Taxa), .before = 1)
+    purrr::reduce(merge)
 
   # Change the metadata to NOT contains the alpha metrics results
-  MetaData <- dplyr::select(MetaData, !c(SR,GS,PD))
+  MetaData <- dplyr::select(MetaData, !unique(Data.filtered$Metric))
 
   # -- Bind the metrics together -- #
-  Taxo_Beta <- merge(Sorensen,Jaccard) %>%
+
+  Taxo.Beta <- merge(Sorensen,Jaccard) %>%
     # Transform the wanted columns into numeric
     mutate_at(c('PlotA', 'PlotB'), as.numeric) %>%
     # Join the metadata for both plots used in the pairwise computation. 
-    left_join(MetaData, c("PlotA" = "Plot", "Taxa")) %>%  # Plot A
-    left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
+    left_join(MetaData, c("PlotA" = "Plot")) %>%  # Plot A
+    left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
     # -- Add the absolute difference of altitude between the two plots (delta_z)
     mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
     # - Add the complete 3D-distance between the two plots (delta_xyz) - #
     mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
 
-  # Return the results
-  return(Taxo_Beta)
+  # ----------------------------------------------------------------------------------------------- #
 
-} %>% set_names(c("Mosses","Liverworts"))
-
-# Combine both mosses and liverworts results
-Taxo.beta <- purrr::reduce(list(Taxo.beta$Mosses,Taxo.beta$Liverworts),full_join) %>%
-  # Pivot the metrics
-  pivot_longer(cols = c(beta.sim,beta.sne,beta.sor,beta.jtu,beta.jne,beta.jac), values_to = "Value", names_to = "Metric") %>%
-  # Move these columns
-  relocate(Metric,Value,.after = PlotB)
-
-#--------------------------------#
-##### PHYLO BETA COMPUTATION #####
-#--------------------------------#
-
-Phylo.beta <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% {
+  # ----- PHYLOGENETIC BETA ----- # 
 
   # Add the rowname as a column to keep this info
-  Data <- Taxa %>%
+  Beta.Data <- Data.filtered %>%
       # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
     pivot_wider(names_from = Metric, values_from = Value) %>%
     # Create a "Plot" column
     rownames_to_column(var = "Plot") %>%
     mutate_at("Plot", as.numeric) %>%
     # Select only the occurence data
-    dplyr::select(any_of(c(Moss_Names,Liver_Names))) %>%
+    dplyr::select(any_of(Sp_Names)) %>%
     # Transpose the data for the analysis
     t() %>%
     # Add the colnames as the plot numbers
     `colnames<-`(1:ncol(.))
 
   # Get the Metadata
-  MetaData <- Taxa %>%
+  MetaData <- Data.filtered %>%
     # Create a "Plot" column
     rownames_to_column(var = "Plot") %>%
     mutate_at("Plot", as.numeric) %>% 
     # Select only the Metadata (based on the species names )
-    dplyr::select(!any_of(c(Moss_Names,Liver_Names,"Metric","Value")))
-
-  # Select the adequate phylogenetic tree between the moss and liverworts ones
-  ifelse(Taxa$Taxa == "Mosses", Phylo <- Mosses_Tree, Phylo <- Liver_Tree)
+    dplyr::select(!any_of(c(Sp_Names,"Metric","Value")))
 
 # -- Compute the PIst metrics -- # 
 
   Hardy_Metrics <- spacodiR::spacodi.calc(
-      sp.plot = Data,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
-      phy = Phylo,             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
+      sp.plot = Beta.Data,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
+      phy = Phylo_Tree,             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
       all.together = TRUE,     # whether to treat all traits together or separately
       prune = TRUE,
       pairwise = TRUE)
@@ -619,24 +596,7 @@ Pst <- Hardy_Metrics$pairwise.Pst %>%
   mutate_at(c("PlotA","PlotB"), as.numeric) %>%
   # Join the metadata for both plots used in the pairwise computation. 
   left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
-  # - Add the absolute difference of altitude between the two plots (delta_z) - #
-  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
-  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
-  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) 
-
-  ## BST ##
-
-Bst <- Hardy_Metrics$pairwise.Bst %>% 
-  # Change colnames and rownames to be a simple number (and not "plt.X")
-  `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  # Transform the pairwise 
-  PW_to_Vector(Colname = "Bst") %>%
-  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Join the metadata for both plots used in the pairwise computation. 
-  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
   # - Add the absolute difference of altitude between the two plots (delta_z) - #
   mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
   # - Add the complete 3D-distance between the two plots (delta_xyz) - #
@@ -653,7 +613,7 @@ PIst <- Hardy_Metrics$pairwise.PIst %>%
   mutate_at(c("PlotA","PlotB"), as.numeric) %>%
   # Join the metadata for both plots used in the pairwise computation. 
   left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot", "Taxa"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
   # - Add the absolute difference of altitude between the two plots (delta_z) - #
   mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
   # - Add the complete 3D-distance between the two plots (delta_xyz) - #
@@ -668,26 +628,18 @@ Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
   pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
   # Relocate columns
   dplyr::select(order(colnames(.))) %>%
-  relocate(any_of(c("Taxa","Metric","Value")),.before = 1) %>%
+  relocate(any_of(c("Metric","Value")),.before = 1) %>%
   relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
-
-# Return the good values
-return(Phylo.beta)
-
-} %>% set_names(c("Mosses","Liverworts"))
-
-# Combine both mosses and liverworts results
-Phylo.beta <- full_join(Phylo.beta$Mosses,Phylo.beta$Liverworts)
 
 # ------------- #
 
 # Combine the taxonomic and phylogenetic beta results
 
-Beta.results <- full_join(Phylo.beta,Taxo.beta)  %>%
+Beta.results <- full_join(Phylo.beta,Taxo.Beta) %>%
   # Create a column that combines the two stripes
-  mutate(Stripe_AB = paste0(Stripe_A,"-",Stripe_B)) %>%
+  mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_A)) %>%
   # Create a column that is the stripe distance between the two plots.
-  mutate(Stripe_distance = abs(as.numeric(Stripe_A)-as.numeric(Stripe_B)))
+  mutate(Range_Number_Distance = abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B)))
 
 # ------------- #
 
