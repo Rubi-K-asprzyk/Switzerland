@@ -42,7 +42,10 @@ p_load(doParallel, # Allow parallel computation
        multcomp,
        multcompView,
        emmeans,
-       stringr)
+       stringr,
+       gridExtra,
+       ggplotify,
+       data.table)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -178,6 +181,10 @@ bryoEnv <- read.csv("EnvironmentalValues_Bryophytes.csv",row.names=1) %>% # mnt_
 Liver_Tree <- read.tree("PhyloTree/timetree50mod-liverwortsV2.nwk")
 Mosses_Tree <- read.tree("PhyloTree/timetree50mod-mossesV2.nwk")
 
+# Load the Null Phylotrees
+Liver_Tree_Null <- read.tree("PhyloTree/timetree-liverworts-NM.tree")
+Mosses_Tree_Null <- read.tree("PhyloTree/timetree-mosses-NM.tree")
+
 # -- Split between Mosses and Liverworts -- #
 
 # Load the names of the mosses present in the dataframe of Occ_Data_Moss for further splitting between Mosses and Liverworts.
@@ -223,19 +230,27 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
   Data <- mossData
   Sp_Names <- Moss_Names
   Phylo_Tree <- Mosses_Tree
+  Phylo_Tree_Null <- Mosses_Tree_Null
   Threshold <- 4 # Mosses only accept a threshold of 4
   Alt_limits <- c(0,1000,1400,1800,2000,2200,Inf) # That makes 6 altitudinal # That makes 6 altitudinal ranges  /  Alt_limits <- c(1400,2000) # For the Liverworts
   N_stripes <- 6
   Weighted <- TRUE
 
   # - COMPUTED METRICS - # 
+      # -- ALPHA -- # 
     # - Species Richness (SR)
     # - Gini-Simpson Index (GS)
     # - Phylogenetic Diversity (PD)
     # - Mean Phylogenetic Diversity (MPD)
     # - Mean Nearest Neighbour Distance (MNTD)
 
-range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_stripes = 6, Weighted = TRUE) {
+      # -- BETA -- #
+    # - Simpson Total (beta.sim)
+    # - Simpson turnover (beta.sim)
+    # - Simpson nestedness (beta.sim)
+
+
+range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null, Alt_limits = NULL, N_stripes = 6, Weighted = TRUE) {
 
   # ----- METRIC COMPUTATION ----- #
 
@@ -250,13 +265,13 @@ range_analyses <- function(Data, Sp_Names, Threshold, Alt_limits = NULL, N_strip
     # Compute the Phylogenetic Diversity
     mutate(PD = picante::pd(samp = .[,Sp_Names], tree = Phylo_Tree)$PD, .after = y)
 
-    # Compute and reorder the cophenetic distances
+  # Compute and reorder the cophenetic distances
     Data.Diss <- cophenetic(Phylo_Tree)
     # Only keep the species that are present in the tree
     Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
     # Reorder the distance matrix
     Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
-  
+
   # Add the MPD to the dataframe
   Data.filtered <- Data.filtered %>%
     # Compute the mean phylogenetic distance
@@ -404,7 +419,7 @@ Alpha.summary.unsplitted <- Data.filtered %>%
 
 # Combination of both plots together.
 F1.Alpha.Summary <- (Alpha.summary | Alpha.summary.unsplitted) + plot_layout(widths = c(2, 1))
-
+F1.Alpha.Summary <- as.grob(F1.Alpha.Summary)
 # --------------------------------------------------------------------------------------------------------------------------------- #
 
   # ----- PLOTTING THE SUMMARISATION BY RANGE ----- #
@@ -464,10 +479,17 @@ model_means_cld <- cld(object = model_means,
 
 # Draw the plot
 Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) + 
-  # Draw the bar
-  geom_bar(data = model_means_cld, stat = "identity", aes(fill = Range_Intervals), show.legend = FALSE) +
+  # Draw the boxplot
+  geom_boxplot(data = model_means_cld, stat = "identity", aes(
+    x = Range_Intervals,
+    lower = emmean - SE,
+    middle = emmean, 
+    upper = emmean + SE,
+    ymin = lower.CL,
+    ymax = upper.CL,
+    fill = Range_Intervals), show.legend = FALSE) +
   # Add the letter
-  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = emmean + (0.03* emmean)), vjust = -0.5) +
+  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02 * upper.CL)), vjust = -0.5) +
   # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
   # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
   # Facet_wrap
@@ -492,6 +514,9 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
     rownames_to_column(var = "Plot") %>%
     mutate_at("Plot", as.numeric)
 
+  # Save the Zdist for mantel tests before vectorization
+  Zdist <- dist(Beta.Data$z)
+
   # Get the Metadata
   MetaData <- Beta.Data %>% 
     # Select only the Metadata (based on the species names )
@@ -505,7 +530,10 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
     # Compute the Sorensen index
     beta.pair(x = ., index.family = "sorensen") %>%
     # Transform into a matrix
-    lapply(as.matrix) 
+    lapply(as.matrix)
+
+  # Save it for mantel tests before vectorization
+  Sorensen_Mantel <- Sorensen 
 
     # Transform it into a vector
   Sorensen <-
@@ -524,6 +552,9 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
     beta.pair(x = ., index.family = "jaccard") %>%
     # Transform into a matrix
     lapply(as.matrix) 
+
+    # Save it for mantel tests before vectorization
+  Jaccard_Mantel <- Jaccard 
 
       # Transform it into a vector
   Jaccard <-
@@ -546,7 +577,9 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
     # -- Add the absolute difference of altitude between the two plots (delta_z)
     mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
     # - Add the complete 3D-distance between the two plots (delta_xyz) - #
-    mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
+    mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
+    # Pivot longer the metrics
+    pivot_longer(cols = any_of(c("beta.sim","beta.sne","beta.sor","beta.jtu","beta.jne","Beta.jac")), values_to = "Value", names_to = "Metric")
 
   # ----------------------------------------------------------------------------------------------- #
 
@@ -637,9 +670,9 @@ Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
 
 Beta.results <- full_join(Phylo.beta,Taxo.Beta) %>%
   # Create a column that combines the two stripes
-  mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_A)) %>%
+  mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_B)) %>%
   # Create a column that is the stripe distance between the two plots.
-  mutate(Range_Number_Distance = abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B)))
+  mutate(Range_Number_Distance = as.factor(abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B))))
 
 # ------------- #
 
@@ -649,285 +682,263 @@ Beta.results <- full_join(Phylo.beta,Taxo.Beta) %>%
 
 # -- Boxplot of Metrics ~ Stripe distance -- #
 
-# FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
-  
-# Beta.Wilcoxon <- Beta.results %>%
-#   # Group the data
-#   group_by(Taxa,Metric) %>%
-#   # Filter the dataset to remove the computation intra plot
-#   filter(PlotA != PlotB) %>%
-#   # Compute the kruskall-test
-#   wilcox_test(formula = Value ~ Stripe_distance, p.adjust.method = "bonferroni") %>%
-#   # Transform "group1" and "group2" into numeric
-#   mutate_at(c("group1", "group2"), as.numeric)
+  # Boxplots of the metrics based on the stripe distance between the two plots used for the computation. 
 
-# # We need a column "y.position" for the plotting of the significance brackets
-# y.position <- Beta.results%>%
-#   # Group the data
-#   group_by(Taxa,Metric) %>%
-#   # Add the y.position with an increase of X%. 
-#   summarise(y.position = max(Value) * 1.05) 
-  
-# # Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
-# Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
-#   # Filter the data to have eventually only the adjacent stripes
-#   filter(group2 == group1 + 1) %>%
-#   # Add the values of y.position 
-#   left_join(y.position, by=c("Taxa","Metric")) %>%
-#   # WARNING: Brackets are moved to the left, therefore, we will move them to the right
-#   mutate(group1 = group1 + 1) %>%
-#   mutate(group2 = group2 + 1)
+# Realization of an ANOVA of the metrics values ~  Range_Number_Distance * Metric
+anova <- aov(Value ~ Range_Number_Distance * Metric, data = Beta.results)
 
-# SECOND STEP / Draw the boxplots.
+# Get (adjusted) means to have results groupes by metrics.
+model_means <- emmeans(object = anova,
+                       specs = ~ Range_Number_Distance | Metric) 
 
-Beta_Boxplot_StripeDistance <- Beta.results %>%
-  # Draw the plot
-  ggboxplot(
-    x = "Stripe_distance", y = "Value", fill = "Stripe_distance",
-    facet = c("Metric", "Taxa"),
-    scales = "free",
-    ggtheme = arrange_theme()
-    ) + 
-  # Add the significance levels
-  # stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0, step.group.by = "Metric") +
-    # Labels
-  xlab("Altitudinal stripes") +
-  ylab("Metric values") +
-  labs(
-    color = "Stripe altitudinal limits",
-    title = paste0("BoxPlot of metric values ~ Altitudinal stripes number"),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
-                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
-  )
+# Add significativity letters to each mean.
+model_means_cld <- cld(object = model_means,
+                       adjust = "sidak",
+                       Letters = letters,
+                       alpha = 0.05)
+
+# Draw the plot
+Beta_Boxplot_StripeDistance <- ggplot(model_means_cld, aes(x = Range_Number_Distance, y = emmean)) + 
+  # Draw the bar
+    geom_boxplot(data = model_means_cld, stat = "identity", aes(
+    x = Range_Number_Distance,
+    lower = emmean - SE,
+    middle = emmean, 
+    upper = emmean + SE,
+    ymin = lower.CL,
+    ymax = upper.CL,
+    fill = Range_Number_Distance), show.legend = FALSE) +
+  # Add the letter
+  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02* upper.CL)), vjust = -0.5) +
+  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
+  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
+  # Facet_wrap
+  facet_wrap(~Metric, scales = "free") + 
+  # Labs
+  labs(title ="Metrics summary ~ Range_Number_Distance.",
+    subtitle = "Separatedly per Metric, Metric means computed by stripes distance between the two plots used for the computation. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
+
 
 # -- Boxplot of Metrics ~ Intra Stripe -- #
 
-# FIRST STEP / Compute the wilcoxon tests between all the stripe distances to after display them on the boxplot.
-  
-# Beta.Wilcoxon <- Beta.results %>%
-#   # Filter the dataset to only keep the pairwise plots from the same stripe
-#   filter(Stripe_A == Stripe_B) %>%
-#   # Filter the dataset to remove the computation intra plot
-#   filter(PlotA != PlotB) %>%
-#   # Group the data
-#   group_by(Taxa,Metric) %>%
-#   # Compute the kruskall-test
-#   wilcox_test(formula = Value ~ Stripe_AB, p.adjust.method = "bonferroni")
+    # Boxplots of the metrics only for the results computed between plots from the same stripe, called "Intra-Stripe".
 
-# # We need a column "y.position" for the plotting of the significance brackets
-# y.position <- Beta.results %>%
-#   # Filter the dataset to only keep the pairwise plots from the same stripe
-#   filter(Stripe_A == Stripe_B) %>%
-#   # Group the data
-#   group_by(Taxa,Metric) %>%
-#   # Add the y.position with an increase of X%. 
-#   summarise(y.position = max(Value) * 1.05)
-  
-# # Filter the precedent data_frame to only keep the adjacent stripe distances (1-2-3 ... )
-# Beta.Wilcoxon.Adj <- Beta.Wilcoxon %>%
-#   # Filter the data 
-#   filter(group2 == group1 + 1) %>%
-#   # Add the values of y.position 
-#   left_join(y.position, by=c("Taxa","Metric")) 
+# Create the data frame
 
-# SECOND STEP / Draw the boxplots.
-
-Beta_Boxplot_IntraStripe <- Beta.results %>%
+Beta.results.intra <- Beta.results %>%
   # Filter the dataset to only keep the pairwise plots from the same stripe
-  dplyr::filter(Stripe_A == Stripe_B) %>%
+  dplyr::filter(Range_Number_A == Range_Number_B) %>%
   dplyr::filter(PlotA != PlotB) %>%
-  mutate_at("Stripe_AB", as.character) %>%
+  mutate_at("Range_Number_AB", as.character) %>%
   # Reorder the stripes to have 10-10 effectively last
-  mutate(Stripe_AB = fct_relevel(Stripe_AB,mixedsort(unique(.$Stripe_AB)))) %>%
-  # Aes
-  ggboxplot(
-    x = "Stripe_AB", y = "Value", fill = "Stripe_AB",
-    facet = c("Metric", "Taxa"),
-    scales = "free",
-    ggtheme = arrange_theme()
-    ) + 
-  # Add the significance levels
-  # stat_pvalue_manual(Beta.Wilcoxon.Adj, hide.ns = TRUE, step.increase = 0, step.group.by = "Metric") +
-    # Labels
-  xlab("Altitudinal stripes") +
-  ylab("Metric values") +
-  labs(
-    color = "Stripe altitudinal limits",
-    title = paste0("BoxPlot of metric values ~ Altitudinal stripes number"),
-    subtitle = paste0("Wilcox-tests were realized between adjacent stripes and significant results are displayed.",
-                          "\n*: p <= 0.05 / **: p <= 0.01 / ***: p <= 0.001 / ****: p <= 0.0001")
-  )
+  mutate(Range_Number_AB = fct_relevel(Range_Number_AB,mixedsort(unique(.$Range_Number_AB))))
 
-# -- Scatterplot of Metrics ~ z-distance -- #
+# Realization of an ANOVA of the metrics values ~  Range_Number_Distance * Metric
+anova <- aov(Value ~ Range_Number_AB * Metric, data = Beta.results.intra)
 
-# Draw the scatterplot.
-  # It's a big one, we better not do it everytime.
+# Get (adjusted) means to have results groupes by metrics.
+model_means <- emmeans(object = anova,
+                       specs = ~ Range_Number_AB | Metric) 
 
-# Beta_Scatterplot <- Beta.results %>%
-#   # Select the wanted taxa (and remove intra plot computation)
-#   dplyr::filter(PlotA != PlotB) %>%
-#   mutate_at("Stripe_distance", as.character) %>%
-#   # Aes
-#   ggplot(aes(x = delta_z, y = Value, color = Stripe_distance, group = Stripe_distance)) +
-#   # Plot all the values
-#   geom_point() +
-#   # facet by Metric
-#   facet_grid(Taxa ~ Metric) +
-#   # Labels
-#   xlab("Z-Distance between plots.") +
-#   ylab("Metric values.") +
-#   labs(
-#     color = "Stripe distances between the two plots.",
-#     title = paste0("Scatterplot of metric values ~ Altitudinal distance")
-#   )
+# Add significativity letters to each mean.
+model_means_cld <- cld(object = model_means,
+                       adjust = "sidak",
+                       Letters = letters,
+                       alpha = 0.05)
 
-#---------------------#
-##### MANTEL TEST #####
-#---------------------#
+# Draw the plot
+Beta_Boxplot_Intra <- ggplot(model_means_cld, aes(x = Range_Number_AB, y = emmean)) + 
+  # Draw the bar
+    geom_boxplot(data = model_means_cld, stat = "identity", aes(
+    x = Range_Number_AB,
+    lower = emmean - SE,
+    middle = emmean, 
+    upper = emmean + SE,
+    ymin = lower.CL,
+    ymax = upper.CL,
+    fill = Range_Number_AB), show.legend = FALSE) +
+  # Add the letter
+  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02* upper.CL)), vjust = -0.5) +
+  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
+  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
+  # Facet_wrap
+  facet_wrap(~Metric, scales = "free") + 
+  # Labs
+  labs(title ="Metrics summary ~ Range_Number.",
+    subtitle = "Separatedly per Metric, Metric means computed between two plots from the same stripe. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
+
+    # ------------- #
+
+#-------------------------------#
+##### MANTEL + PEARSON TEST #####
+#-------------------------------#
 
 # Mantel Test are only used for beta metrics (to compare matrices against matrices)
+# Pearson Test are only used for alpha metrics
 
-# Compute a Mantel test between the PIst and the z-distance between the two plots used used in the comparison.
-
-## We need to recompute the metrics without vectorizing them to compute mantel tests
-
-Mantel.Data <- foreach(Taxa = list(Moss.filtered,Liver.filtered)) %dopar% { 
-
-  # Add the rowname as a column to keep this info
-  Data <- Taxa %>%
-    # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
-    pivot_wider(names_from = Metric, values_from = Value) %>%
-    # Create a "Plot" column
-    rownames_to_column(var = "Plot") %>%
-    mutate_at("Plot", as.numeric)
-
-  # Get the Metadata
-  MetaData <- Data %>% 
-    # Select only the Metadata (based on the species names )
-    dplyr::select(!any_of(c(Moss_Names,Liver_Names)))
-
-  # -- Sorensen -- # 
-
-  Sorensen <- Data %>%
-    # Select only the occurence data
-    dplyr::select(!colnames(MetaData)) %>%
-    # Compute the Sorensen index
-    beta.pair(x = ., index.family = "sorensen") %>%
-    # Transform into a matrix
-    lapply(as.matrix) 
-
-  # -- Jaccard -- # 
-
-  Jaccard <- Data %>%
-    # Select only the occurence data
-    dplyr::select(!colnames(MetaData)) %>%
-    # Compute the Sorensen index
-    beta.pair(x = ., index.family = "jaccard") %>%
-    # Transform into a matrix
-    lapply(as.matrix) 
-
-  # -- Hardy Metrics -- #
-
-  # Prepare the data
-    Data_Hardy <- Data %>%
-    # Select only the occurence data
-    dplyr::select(!colnames(MetaData)) %>%
-    # Transpose the data for the analysis
-    t() %>%
-    # Add the colnames as the plot numbers
-    `colnames<-`(rownames(Data))
-
-  # Select the good phylogenetic tree.
-  Phylo <- Mosses_Tree
-  if(unique(Data$Taxa) == "Liverworts") {Phylo <- Liver_Tree}
-
-  # Compute the PIst
-  Hardy_Metrics <- spacodiR::spacodi.calc(
-    sp.plot = Data_Hardy,    # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
-    phy = Phylo,       # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
-    all.together = TRUE,     # whether to treat all traits together or separately
-    prune = TRUE,
-    pairwise = TRUE)
-
-  # -- Extract all the Metrics we want to keep -- #
+# -- Extract all the Metrics we want to keep -- #
 
     # Hardy Metrics
   PIst <- Hardy_Metrics$pairwise.PIst %>% as.dist()
   Pst <- Hardy_Metrics$pairwise.Pst %>% as.dist()
   Bst <- Hardy_Metrics$pairwise.Bst %>% as.dist()
-    # Sorensen Metrics
-  beta.sim <- Sorensen$beta.sim %>% as.dist()
-  beta.sne <- Sorensen$beta.sne %>% as.dist()
-  beta.sor <- Sorensen$beta.sor %>% as.dist()
+  
+    # Sorensen Metrics    
+  beta.sim <- Sorensen_Mantel$beta.sim %>% as.dist()
+  beta.sne <- Sorensen_Mantel$beta.sne %>% as.dist()
+  beta.sor <- Sorensen_Mantel$beta.sor %>% as.dist()
     # Jaccard Metrics
-  beta.jtu <- Jaccard$beta.jtu %>% as.dist()
-  beta.jne <- Jaccard$beta.jne %>% as.dist()
-  beta.jac <- Jaccard$beta.jac %>% as.dist()
+  beta.jtu <- Jaccard_Mantel$beta.jtu %>% as.dist()
+  beta.jne <- Jaccard_Mantel$beta.jne %>% as.dist()
+  beta.jac <- Jaccard_Mantel$beta.jac %>% as.dist()
 
   # Return the results
-  return(list(PIst,Pst,Bst,beta.jac,beta.jne,beta.jtu,beta.sim,beta.sne,beta.sor,Data$z) %>%
-            setNames(c("PIst","Pst","Bst","beta.jac","beta.jne","beta.jtu","beta.sim","beta.sne","beta.sor","Zdist")))
-
-} %>% set_names(c("Mosses","Liverworts"))
+  Mantel.Data <- (list(PIst,Pst,Bst,beta.jac,beta.jne,beta.jtu,beta.sim,beta.sne,beta.sor) %>%
+            setNames(c("PIst","Pst","Bst","beta.jac","beta.jne","beta.jtu","beta.sim","beta.sne","beta.sor")))
 
 #### --- Computation of the Mantel Test --- # 
 
-# Execute the tests on both Mosses & Liverworts
-
-Mantel.Results <- foreach(i = 1) %do% {
-
-  # Because only mosses are working for now 
-  Data <- Mantel.Data[[i]]
+Mantel.Results <- foreach(Data = Mantel.Data, .combine = rbind) %do% {
   
-  # Extract the Zdist and remove it from the Data
-  Zdist <- dist(Data$Zdist)
-  Taxa.Mantel <- Data
-  Taxa.Mantel$Zdist <- NULL
-
-  # Compute all the Mantel tests
-  Mantel <- foreach(Data2 = Taxa.Mantel, .combine = rbind) %do% {
-
     # Compute the test
-    Test <- mantel(Data2,Zdist, method = "spearman", permutations = 9, na.rm = TRUE)
+    Test <- mantel(Data,Zdist, method = "spearman", permutations = 9, na.rm = TRUE)
 
     # Extract the name of the metric, the significance and the p-value
     Result <- data.frame(Statistic = Test$statistic, Pvalue = Test$signif)
     # Return the results
 
-  } %>% mutate(Metric = names(Taxa.Mantel), .before = Statistic)
+  } %>% mutate(Metric = names(Mantel.Data), .before = Statistic)
 
-} # %>% set_names(names(Mantel.Data))
-
-#-----------------------------#
-##### PEARSON CORRELATION #####
-#-----------------------------#
+#### --- Computation of the pearson correlation --- # 
 
 # Pearson correlations are used with alpha metrics against a variable (z)
 
-Pearson_Correlation <- Total.filtered %>%
-  group_by(Taxa, Metric) %>%
-  summarise(correlation = cor(Value, z))
+Pearson.Correlation <- Data.filtered %>%
+  group_by(Metric) %>%
+  summarise(Statistic = cor(Value, z))
+
+##### --- Combine Alpha and Beta results --- #####
+
+Correlation.results <- full_join(Mantel.Results,Pearson.Correlation)
+
+# Transform it into a table to plot
+# Grob the parameters 
+Correlation.results <-tableGrob(Correlation.results)
+
+  # ------------------------------------------------------------------------ # 
+
+#--------------------#
+##### NULL MODEL #####
+#--------------------#
+
+  # For all the phylogenetic metrics, compute the null model based on null trees
+
+# Computation of the metrics and filtering of the data based on the specie richness Threshold
+  Alpha.Obs <- Data %>%
+    # Compute the Species Richness
+    mutate(SR = apply(Data[,Sp_Names], 1, sum), .after = y) %>%
+    # Select the plots based on the Species richness threshold.
+    dplyr::filter(SR > Threshold)
+
+  # Compute and reorder the cophenetic distances
+    Data.Diss <- cophenetic(Phylo_Tree)
+    # Only keep the species that are present in the tree
+    Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
+    # Reorder the distance matrix
+    Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
+
+  # Compute the OBSERVED values
+  Alpha.Obs <- Alpha.Obs %>%
+    # Compute the MPD and MNTD Observed
+    mutate(MPD = picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Compute the mean nearest neighbour distance
+    mutate(MNTD = picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Remove the SR column
+    dplyr::select(!SR) %>%     
+    # Add the "Type" of the metric (OBS vs NM)
+    mutate(Type = "OBS")
+
+  
+  # --- Compute the NULL MODEL values --- # 
+  Alpha.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+
+    # Compute and reorder the cophenetic distances
+    Data.Diss <- cophenetic(Phylo_Tree_Null[[i]])
+    # Only keep the species that are present in the tree
+    Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
+    # Reorder the distance matrix
+    Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
+
+    # Compute the MPD
+    Alpha.NM <- Alpha.Obs %>%
+    # Compute the mean phylogenetic distance
+    mutate(MPD= picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Compute the mean nearest neighbour distance
+    mutate(MNTD= picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Add the "Type" of the metric (OBS vs NM)
+    mutate(Type = paste0("NM",i)) %>%
+    # Only select the wanted metrics
+    dplyr::select(any_of(c("Site_VDP","Site_Suisse","x","y","Type","MPD","MNTD"))) %>%
+    # Pivot longer the metrics
+    pivot_longer(cols = c(MPD,MNTD), values_to = "Value", names_to = "Metric")
+
+    # return
+    return(Alpha.NM)
+
+  } # End of Null Models
+
+    # Combine Observed and Null Results
+
+    Alpha.Obs <- Alpha.Obs %>%
+    # Pivot longer the metrics
+    pivot_longer(cols = c(MPD,MNTD), values_to = "Value", names_to = "Metric")
+
+    Alpha.Null.Complete <- full_join(Alpha.Obs,Alpha.Null) %>%
+    # Relocate the wanted columns.
+    relocate(any_of(c("Type","Metric","Value")), .after = y)
+  
+  # -- END OF NULL MODEL COMPUTATION -- # 
+
+  # ------------------------------------------------ #
+
+  # Return the plots created
+  return(list(F1.Alpha.Summary,Alpha.scatter,Alpha.boxplots,Beta_Boxplot_StripeDistance,Beta_Boxplot_Intra,Correlation.results))
+
+} # End of range analyses.
 
 
-#-----------------------------#
-##### TEST #####
-#-----------------------------#
+#----------------------------------------------------#
+##### RANGE-ANALYSES: COMPUTATION OF THE METRICS #####
+#----------------------------------------------------#
 
-  Data <- Mantel.Data$Liverworts
+Moss.results <- range_analyses(Data = mossData, Sp_Names = Moss_Names, Phylo_Tree = Mosses_Tree,  Threshold = 4, Alt_limits = c(0,1000,1400,1800,2000,2200,Inf))
 
-  # Extract the Zdist and remove it from the Data
-  Zdist <- dist(Data$Zdist)
-  Taxa.Mantel <- Data
-  Taxa.Mantel$Zdist <- NULL
+# Create the pdf
+Moss.pdf <- marrangeGrob(Moss.results, nrow=1, ncol = 1)
 
-  # Compute all the Mantel tests
-  Mantel <- foreach(Data2 = Taxa.Mantel, .combine = rbind) %do% {
+# Save the pdf
+ggsave(filename = paste0("Exploratory_Metrics_Moss.pdf"),
+       plot = Moss.pdf,
+       device = "pdf",
+       path = paste0(getwd()),
+       width = 35,
+       height = 35,
+       units = "cm")
 
-    # Compute the test
-    Test <- mantel(Data2,Zdist, method = "spearman", permutations = 9, na.rm = TRUE)
+  # ----------------------- # 
 
-    # Extract the name of the metric, the significance and the p-value
-    Result <- data.frame(Statistic = Test$statistic, Pvalue = Test$signif)
-    # Return the results
+Liver.results <- range_analyses(Data = liverData, Sp_Names = Liver_Names, Phylo_Tree = Liver_Tree,  Threshold = 3, Alt_limits = c(0,1400,2000,Inf))
 
-  }
+# Create the pdf
+Liver.pdf <- marrangeGrob(Liver.results, nrow=1, ncol = 1)
+
+# Save the pdf
+ggsave(filename = paste0("Exploratory_Metrics_Liver.pdf"),
+       plot = Liver.pdf,
+       device = "pdf",
+       path = paste0(getwd()),
+       width = 35,
+       height = 35,
+       units = "cm")
+
+
