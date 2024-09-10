@@ -45,7 +45,8 @@ p_load(doParallel, # Allow parallel computation
        stringr,
        gridExtra,
        ggplotify,
-       data.table)
+       data.table,
+       ggh4x)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -259,7 +260,7 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
   { # !! Alpha Metric Computation 
 
   # Computation of the metrics and filtering of the data based on the specie richness Threshold
-  Data.filtered <- Data %>%
+  Alpha.Obs <- Data %>%
     # Compute the Species Richness
     mutate(SR = apply(Data[,Sp_Names], 1, sum), .after = y) %>%
     # Compute the Gini-Simpson Index
@@ -276,20 +277,62 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
     # Reorder the distance matrix
     Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
 
-  # Add the MPD to the dataframe
-  Data.filtered <- Data.filtered %>%
+  # Add the OBSERVED Phylogenetic metrics to the dataframe
+  Alpha.Obs <- Alpha.Obs %>%
     # Compute the mean phylogenetic distance
     mutate(MPD = picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
     # Compute the mean nearest neighbour distance
     mutate(MNTD = picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+    # Add the "Type" of the metric (OBS vs NM)
+    mutate(Type = "OBS")
+
+    # --- Compute the NULL MODEL values --- #
+
+    Alpha.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+
+      # Compute and reorder the cophenetic distances
+      Data.Diss <- cophenetic(Phylo_Tree_Null[[i]])
+      # Only keep the species that are present in the tree
+      Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
+      # Reorder the distance matrix
+      Data.Diss <- Data.Diss[Sp_Names_Present, Sp_Names_Present]
+
+      # Compute the MPD
+      Alpha.NM <- Data.filtered %>%
+        # Compute the mean phylogenetic distance
+        mutate(MPD = picante::mpd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+        # Compute the mean nearest neighbour distance
+        mutate(MNTD = picante::mntd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+        # Add the "Type" of the metric (OBS vs NM)
+        mutate(Type = paste0("NM")) %>%
+        # Only select the wanted metrics
+        dplyr::select(any_of(c("Site_VDP", "Site_Suisse", "x", "y", "Type", "MPD", "MNTD"))) %>%
+        # Pivot longer the metrics
+        pivot_longer(cols = c(MPD, MNTD), values_to = "Value", names_to = "Metric")
+
+      # return
+      return(Alpha.NM)
+      
+    } # End of Null Models
+
+    # Combine Observed and Null Results
+
+    Alpha.Obs <- Alpha.Obs %>%
     # Pivot longer the metrics
-    pivot_longer(cols = c(SR,GS,PD,MPD,MNTD), values_to = "Value", names_to = "Metric")
+      pivot_longer(cols = c(SR,GS,PD,MPD,MNTD), values_to = "Value", names_to = "Metric")
+
+    Data.filtered <- full_join(Alpha.Obs, Alpha.Null) %>%
+      # Relocate the wanted columns.
+      relocate(any_of(c("Type", "Metric", "Value")), .after = y) %>%
+      # Remove the Number contained in the "Type" column.
+      mutate(across(Type,~ gsub('[[:digit:]]+', '', .)))
+
 
   # Message
   cat(rule(left = paste0("- Data filtered based on species richness / THRESHOLD = ",Threshold," - "), line_col = "white", line = " ", col = "green"))
-  cat(paste0(" - Number of initial plots: ",length(unique(Data$Site_VDP))))
-  cat(paste0(" - Number of plot left: ",length(unique(Data.filtered$Site_VDP))))
-  cat(paste0(" - Number of plot eliminated: ",(length(unique(Data$Site_VDP)) - length(unique(Data.filtered$Site_VDP)))))
+  cat(paste0(" - Number of initial plots: ",length(unique(Data$Site_VDP))," -\n"))
+  cat(paste0(" - Number of plot left: ",length(unique(Data.filtered$Site_VDP))," -\n"))
+  cat(paste0(" - Number of plot eliminated: ",(length(unique(Data$Site_VDP)) - length(unique(Data.filtered$Site_VDP)))," -\n"))
 
   # ----- ENVIRONMENTAL DATA MERGING ----- #####
 
@@ -375,9 +418,9 @@ cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " "
 # Create a global dataframe containing the results for all taxa. 
 Data.filtered.summarize <- Data.filtered %>%
   # Select only the wanted data
-  dplyr::select("Site_VDP":"Value") %>%
+  dplyr::select("Site_VDP":"Type") %>%
   # Group the data
-  group_by(Range_Number, Metric) %>%
+  group_by(Range_Number, Metric, Type) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
   mutate(Sum_Value = sum(Value), Mean_Value = mean(Value),Var_Value = var(Value), Count=n()) %>%
   # -!- Reorder the breaks -!- #
@@ -389,6 +432,8 @@ Data.filtered.summarize <- Data.filtered %>%
   
 # Compute and create the summary table of the metric(s) splitted between stripes for each taxa
 Alpha.summary <- Data.filtered %>%
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
   # Group the data
   group_by(Range_Intervals, Metric) %>%
   # Compute the summary stat
@@ -411,6 +456,8 @@ Alpha.summary <- Data.filtered %>%
     
 # Compute and create the summary table of the metric(s) unsplitted between stripes
 Alpha.summary.unsplitted <- Data.filtered %>%
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
   # Group the data
   group_by(Metric) %>%
   # Compute the summary stat
@@ -438,6 +485,8 @@ F1.Alpha.Summary <- as.grob(F1.Alpha.Summary)
 
 # Find the mean value of z for x_axis centering and Value for y-axis
 Value.Mean <- Data.filtered %>%
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
   # Group the data
   group_by(Metric,Range_Intervals) %>%
   # Compute the Sum of the Metric and the number of plots for each group. 
@@ -447,6 +496,8 @@ Value.Mean <- Data.filtered %>%
 
 # Draw the plots.
 Alpha.scatter <- Data.filtered %>%
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
   # Aes
   ggplot(aes(x = z, y = Value, color = Range_Intervals)) + # Reorder the factors correctly
   # Plot all the values
@@ -472,6 +523,41 @@ Alpha.scatter <- Data.filtered %>%
     )
   )
 
+
+  } # !! End of Figure 2
+
+  { # !! FIGURE 2: Scatterplot of Metric Values ~ Range_Intervals - # 
+
+  # Draw the plots.
+Alpha.scatter <- Data.filtered %>%
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
+  # Aes
+  ggplot(aes(x = z, y = Value, color = Range_Intervals)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_point() +
+  # Facet the plot
+  facet_grid(Metric ~ .,
+    scales = "free_y"
+  ) +
+  # Plot the connected scatter plot of the mean values for each altitudinal stripe.
+  new_scale_color() + # Define scales before initiating a new one
+  # Use the new scale
+  geom_point(data = Value.Mean, aes(y = Mean_Value), size = 2) +
+  geom_line(data = Value.Mean, aes(y = Mean_Value), linewidth = 1, alpha = 0.7, group = 1) +
+  # Guides
+  guides(size = "none") +
+  # Labels
+  xlab("Altitude") +
+  labs(
+    color = "Stripe altitudinal limits",
+    title = paste0("ScatterPlot of Metrics ~ Altitude, colored by altitudinal ranges."),
+    subtitle = paste0(
+      "Black dotted line represent the mean metric value for each of the altitudinal stripes."
+    )
+  )
+
+
   } # !! End of Figure 2
 
   { # !! FIGURE 3: Boxplots of Metrics Values ~ Altitudinal stripes - # 
@@ -489,30 +575,68 @@ model_means_cld <- cld(object = model_means,
                        Letters = letters,
                        alpha = 0.05)
 
-# Draw the plot
-Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) + 
-  # Draw the boxplot
-  geom_boxplot(data = model_means_cld, stat = "identity", aes(
-    x = Range_Intervals,
-    lower = emmean - SE,
-    middle = emmean, 
-    upper = emmean + SE,
-    ymin = lower.CL,
-    ymax = upper.CL,
-    fill = Range_Intervals), show.legend = FALSE) +
+# Compute the boxplots stats to have access to the upper hinge value.
+  Alpha.Stats.boxplots <- Data.filtered %>% 
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
+  # Group_by
+  group_by(Range_Intervals,Metric) %>%
+  # Extract the values
+  summarise(as_tibble_row(quantile(Value), .name_repair = \(x) paste0('q', parse_number(x)))) 
+
+  # Combine the model and the stats to use them altogether
+  Labels <- full_join(model_means_cld,Alpha.Stats.boxplots)
+
+  # Draw the Boxplots
+  Alpha.boxplots <- Data.filtered %>% 
+  # Filter only for the Observed Values
+  dplyr::filter(Type == "OBS") %>%
+  # Aes
+  ggplot(aes(x = Range_Intervals, y = Value, fill = Range_Intervals)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_boxplot(outlier.shape = NA) +
+  # Facet the plot
+  ggh4x::facet_grid2(. ~ Metric, scales = "free_y", independent = "y") +
   # Add the letter
-  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02 * upper.CL)), vjust = -0.5) +
-  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
-  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
-  # Facet_wrap
-  facet_wrap(~Metric, scales = "free") + 
+  geom_label(data = Labels, aes(label = toupper(str_trim(.group)), y = q75, fontface = "bold"), alpha = 0.7, vjust = -0.5) +
   # Theme
   theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
   # Labs
   labs(title ="Metrics summary ~ Altitudinal ranges entered.",
-    subtitle = "Separatedly per Metric, Metric means by altitudinal range followed by a common letter are not significantly different according to the Tukey-test")
+    subtitle = "Separatedly per Metric, Metric means by altitudinal range followed by a common letter are not significantly different according to the Tukey-test") 
 
   } # !! End of Figure 3
+
+  { # !! FIGURE 4: Boxplots of Null-Models ~ Altitudinal stripes - # 
+
+  # Draw the Boxplots
+  Alpha.NM.boxplots <- Data.filtered %>% 
+  # Filter only for the Observed Values
+  dplyr::filter(Metric %in% c("MPD","MNTD")) %>%
+  # Aes
+  ggplot(aes(x = Range_Intervals, y = Value, fill = Type)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_boxplot(outlier.shape = NA) +
+  # Facet the plot
+  ggh4x::facet_grid2(. ~ Metric, scales = "free_y", independent = "y") +
+  # 
+      stat_compare_means(
+        label = "p.signif",
+        method = "wilcox.test",
+        symnum.args = list(
+          cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+          symbols = c("****", "***", "**", "*", "ns")
+        )
+      ) + 
+  # Add the letter
+  # Theme
+  theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  # Labs
+  labs(title =" Observed VS NullModel Metrics ~ Altitudinal ranges entered.",
+    subtitle = "Separatedly per Metric and Range Intervals, Wilcoxon tests of Observed VS NullModel Values")  ; Alpha.NM.boxplots
+
+  } # !! End of Figure 4
+
 
   #------------------------------#
   ##### BETA METRICS ANALYSES ####
@@ -909,7 +1033,7 @@ Beta_Boxplot_Intra <- ggplot(model_means_cld, aes(x = Range_Number_AB, y = emmea
 
       # return
       return(Alpha.NM)
-      
+
     } # End of Null Models
 
     # Combine Observed and Null Results
