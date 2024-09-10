@@ -13,7 +13,7 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 ##### INITIALISATION #####
 #------------------------#
 
-{
+{ # !! Initialisation
 
 # Set Working Directory
 setwd("/home/thibault/Documents/PhD-Thesis/Research/Switzerland")
@@ -206,7 +206,7 @@ Liver_Names <- colnames(liverData)[-c(1:4)]
 # Message
 cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green"))
 
-} # END OF INITIALISATION
+} # !! End of the initialisation.
 
 #--------------------------------------------------#
 ##### RANGE-ANALYSES: CREATION OF THE FUNCTION #####
@@ -252,7 +252,11 @@ cat(rule(left = "- Data loaded - ", line_col = "white", line = " ", col = "green
 
 range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null, Alt_limits = NULL, N_stripes = 6, Weighted = TRUE) {
 
-  # ----- METRIC COMPUTATION ----- #
+  #-------------------------------#
+  ##### ALPHA METRICS ANALYSES ####
+  #-------------------------------#
+
+  { # !! Alpha Metric Computation 
 
   # Computation of the metrics and filtering of the data based on the specie richness Threshold
   Data.filtered <- Data %>%
@@ -292,9 +296,13 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
   # Joining of the environmental data and move the z column
   Data.filtered <- left_join(Data.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
 
-  # --------------------------------------------------------------------------------------------------------------------------------- #
+  } # !! End of Alpha Metric Computation
+
+  # ------------------------------------------------------------------------------------------------------------------------------ #
 
   # ----- RANGE CHOICE ----- #
+
+  { # !! Range Choice 
 
     # Creation of the ranges based on the parameters entered in the function.
 
@@ -356,10 +364,13 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
 # Message
 cat(rule(left = "- Altitudinal stripes added - ", line_col = "white", line = " ", col = "green"))
 
-
+  } # !! End of Range Addition 
+  
   # --------------------------------------------------------------------------------------------------------------------------------- #
 
-  # ----- SUMMARISATION BY RANGE ----- #
+  # ----- PLOTTING ----- #
+
+  { # !! FIGURE 1: Alpha Table ~ Range 
 
 # Create a global dataframe containing the results for all taxa. 
 Data.filtered.summarize <- Data.filtered %>%
@@ -420,11 +431,10 @@ Alpha.summary.unsplitted <- Data.filtered %>%
 # Combination of both plots together.
 F1.Alpha.Summary <- (Alpha.summary | Alpha.summary.unsplitted) + plot_layout(widths = c(2, 1))
 F1.Alpha.Summary <- as.grob(F1.Alpha.Summary)
-# --------------------------------------------------------------------------------------------------------------------------------- #
 
-  # ----- PLOTTING THE SUMMARISATION BY RANGE ----- #
+  } # !! End of Figure 1
 
-# - Distribution of Metric Values ~ Range_Intervals - # 
+  { # !! FIGURE 2: Scatterplot of Metric Values ~ Range_Intervals - # 
 
 # Find the mean value of z for x_axis centering and Value for y-axis
 Value.Mean <- Data.filtered %>%
@@ -462,7 +472,9 @@ Alpha.scatter <- Data.filtered %>%
     )
   )
 
-# - Boxplots of Metrics Values ~ Altitudinal stripes - # 
+  } # !! End of Figure 2
+
+  { # !! FIGURE 3: Boxplots of Metrics Values ~ Altitudinal stripes - # 
 
 # Realization of an ANOVA of the metrics values ~  Range_Intervals * Metric
 anova <- aov(Value ~ Range_Intervals * Metric, data = Data.filtered)
@@ -500,11 +512,13 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
   labs(title ="Metrics summary ~ Altitudinal ranges entered.",
     subtitle = "Separatedly per Metric, Metric means by altitudinal range followed by a common letter are not significantly different according to the Tukey-test")
 
-#----------------------------------#
-##### BETA METRICS COMPUTATION #####
-#----------------------------------#
+  } # !! End of Figure 3
 
-  # ----- TAXONOMIC BETA ----- # 
+  #------------------------------#
+  ##### BETA METRICS ANALYSES ####
+  #------------------------------#
+
+  { # !! Taxonomic Beta Metric Computation 
 
   # Add the rowname as a column to keep this info
   Beta.Data <- Data.filtered %>%
@@ -581,9 +595,11 @@ Alpha.boxplots <- ggplot(model_means_cld, aes(x = Range_Intervals, y = emmean)) 
     # Pivot longer the metrics
     pivot_longer(cols = any_of(c("beta.sim","beta.sne","beta.sor","beta.jtu","beta.jne","Beta.jac")), values_to = "Value", names_to = "Metric")
 
-  # ----------------------------------------------------------------------------------------------- #
+  } # !! End of Taxonomic Beta Computation
 
-  # ----- PHYLOGENETIC BETA ----- # 
+  # --------------------------------------------------------------------------------------------------------------------------------- #
+
+  { # !! Phylogenetic Beta Metric Computation 
 
   # Add the rowname as a column to keep this info
   Beta.Data <- Data.filtered %>%
@@ -664,23 +680,23 @@ Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
   relocate(any_of(c("Metric","Value")),.before = 1) %>%
   relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
-# ------------- #
+} # !! End of Phylogenetic Beta Computation
 
-# Combine the taxonomic and phylogenetic beta results
+  # ------------- #
 
-Beta.results <- full_join(Phylo.beta,Taxo.Beta) %>%
-  # Create a column that combines the two stripes
-  mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_B)) %>%
-  # Create a column that is the stripe distance between the two plots.
-  mutate(Range_Number_Distance = as.factor(abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B))))
+  # Combine the taxonomic and phylogenetic beta results
 
-# ------------- #
+  Beta.results <- full_join(Phylo.beta,Taxo.Beta) %>%
+    # Create a column that combines the two stripes
+    mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_B)) %>%
+    # Create a column that is the stripe distance between the two plots.
+    mutate(Range_Number_Distance = as.factor(abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B))))
 
-#---------------------------#
-##### PLOT BETA RESULTS #####
-#---------------------------#
+  # ------------- #
 
-# -- Boxplot of Metrics ~ Stripe distance -- #
+  # ----- PLOTTING ----- #
+
+  { # !! FIGURE 4: Range Boxplot of Metrics ~ Stripe distance -- #
 
   # Boxplots of the metrics based on the stripe distance between the two plots used for the computation. 
 
@@ -718,8 +734,9 @@ Beta_Boxplot_StripeDistance <- ggplot(model_means_cld, aes(x = Range_Number_Dist
   labs(title ="Metrics summary ~ Range_Number_Distance.",
     subtitle = "Separatedly per Metric, Metric means computed by stripes distance between the two plots used for the computation. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
 
+  } # !! End of Figure 4
 
-# -- Boxplot of Metrics ~ Intra Stripe -- #
+  { # !! FIGURE 5 :Boxplot of Metrics ~ Intra Stripe -- #
 
     # Boxplots of the metrics only for the results computed between plots from the same stripe, called "Intra-Stripe".
 
@@ -767,139 +784,241 @@ Beta_Boxplot_Intra <- ggplot(model_means_cld, aes(x = Range_Number_AB, y = emmea
   labs(title ="Metrics summary ~ Range_Number.",
     subtitle = "Separatedly per Metric, Metric means computed between two plots from the same stripe. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
 
-    # ------------- #
+  } # !! End of Figure 5
 
-#-------------------------------#
-##### MANTEL + PEARSON TEST #####
-#-------------------------------#
+  #-------------------------------#
+  ##### MANTEL + PEARSON TEST #####
+  #-------------------------------#
 
-# Mantel Test are only used for beta metrics (to compare matrices against matrices)
-# Pearson Test are only used for alpha metrics
+  # Mantel Test are only used for beta metrics (to compare matrices against matrices)
+  # Pearson Test are only used for alpha metrics
 
-# -- Extract all the Metrics we want to keep -- #
+  { # !! Mantel Tests
 
-    # Hardy Metrics
-  PIst <- Hardy_Metrics$pairwise.PIst %>% as.dist()
-  Pst <- Hardy_Metrics$pairwise.Pst %>% as.dist()
-  Bst <- Hardy_Metrics$pairwise.Bst %>% as.dist()
-  
-    # Sorensen Metrics    
-  beta.sim <- Sorensen_Mantel$beta.sim %>% as.dist()
-  beta.sne <- Sorensen_Mantel$beta.sne %>% as.dist()
-  beta.sor <- Sorensen_Mantel$beta.sor %>% as.dist()
-    # Jaccard Metrics
-  beta.jtu <- Jaccard_Mantel$beta.jtu %>% as.dist()
-  beta.jne <- Jaccard_Mantel$beta.jne %>% as.dist()
-  beta.jac <- Jaccard_Mantel$beta.jac %>% as.dist()
+  # -- Extract all the Metrics we want to keep -- #
 
-  # Return the results
-  Mantel.Data <- (list(PIst,Pst,Bst,beta.jac,beta.jne,beta.jtu,beta.sim,beta.sne,beta.sor) %>%
-            setNames(c("PIst","Pst","Bst","beta.jac","beta.jne","beta.jtu","beta.sim","beta.sne","beta.sor")))
+      # Hardy Metrics
+    PIst <- Hardy_Metrics$pairwise.PIst %>% as.dist()
+    Pst <- Hardy_Metrics$pairwise.Pst %>% as.dist()
+    Bst <- Hardy_Metrics$pairwise.Bst %>% as.dist()
 
-#### --- Computation of the Mantel Test --- # 
+      # Sorensen Metrics    
+    beta.sim <- Sorensen_Mantel$beta.sim %>% as.dist()
+    beta.sne <- Sorensen_Mantel$beta.sne %>% as.dist()
+    beta.sor <- Sorensen_Mantel$beta.sor %>% as.dist()
+      # Jaccard Metrics
+    beta.jtu <- Jaccard_Mantel$beta.jtu %>% as.dist()
+    beta.jne <- Jaccard_Mantel$beta.jne %>% as.dist()
+    beta.jac <- Jaccard_Mantel$beta.jac %>% as.dist()
 
-Mantel.Results <- foreach(Data = Mantel.Data, .combine = rbind) %do% {
-  
-    # Compute the test
-    Test <- mantel(Data,Zdist, method = "spearman", permutations = 9, na.rm = TRUE)
-
-    # Extract the name of the metric, the significance and the p-value
-    Result <- data.frame(Statistic = Test$statistic, Pvalue = Test$signif)
     # Return the results
+    Mantel.Data <- (list(PIst,Pst,Bst,beta.jac,beta.jne,beta.jtu,beta.sim,beta.sne,beta.sor) %>%
+              setNames(c("PIst","Pst","Bst","beta.jac","beta.jne","beta.jtu","beta.sim","beta.sne","beta.sor")))
 
-  } %>% mutate(Metric = names(Mantel.Data), .before = Statistic)
+  #### --- Computation of the Mantel Test --- # 
 
-#### --- Computation of the pearson correlation --- # 
+  Mantel.Results <- foreach(Data = Mantel.Data, .combine = rbind) %do% {
 
-# Pearson correlations are used with alpha metrics against a variable (z)
+      # Compute the test
+      Test <- mantel(Data,Zdist, method = "spearman", permutations = 9, na.rm = TRUE)
 
-Pearson.Correlation <- Data.filtered %>%
-  group_by(Metric) %>%
-  summarise(Statistic = cor(Value, z))
+      # Extract the name of the metric, the significance and the p-value
+      Result <- data.frame(Statistic = Test$statistic, Pvalue = Test$signif)
+      # Return the results
 
-##### --- Combine Alpha and Beta results --- #####
+    } %>% mutate(Metric = names(Mantel.Data), .before = Statistic)
 
-Correlation.results <- full_join(Mantel.Results,Pearson.Correlation)
+  } # !! End of Mantel Tests
 
-# Transform it into a table to plot
-# Grob the parameters 
-Correlation.results <-tableGrob(Correlation.results)
+  { # !! Pearson Correlation
 
-  # ------------------------------------------------------------------------ # 
+  #### --- Computation of the pearson correlation --- # 
 
-#--------------------#
-##### NULL MODEL #####
-#--------------------#
+  # Pearson correlations are used with alpha metrics against a variable (z)
 
-  # For all the phylogenetic metrics, compute the null model based on null trees
+  Pearson.Correlation <- Data.filtered %>%
+    group_by(Metric) %>%
+    summarise(Statistic = cor(Value, z))
 
-# Computation of the metrics and filtering of the data based on the specie richness Threshold
-  Alpha.Obs <- Data %>%
-    # Compute the Species Richness
-    mutate(SR = apply(Data[,Sp_Names], 1, sum), .after = y) %>%
-    # Select the plots based on the Species richness threshold.
-    dplyr::filter(SR > Threshold)
+  } # !! End of Pearson Correlation 
+  
+  ##### --- Combine Alpha and Beta results --- #####
 
-  # Compute and reorder the cophenetic distances
+  Correlation.results <- full_join(Mantel.Results,Pearson.Correlation)
+
+  # Transform it into a table to plot
+  # Grob the parameters 
+  Correlation.results <-tableGrob(Correlation.results)
+
+  #--------------------#
+  ##### NULL MODEL #####
+  #--------------------#
+
+    # For all the phylogenetic metrics, compute the null model based on null trees
+
+  { # !! Alpha Phylogenetic Null Model Computation
+
+    # Computation of the metrics and filtering of the data based on the specie richness Threshold
+    Alpha.Obs <- Data %>%
+      # Compute the Species Richness
+      mutate(SR = apply(Data[, Sp_Names], 1, sum), .after = y) %>%
+      # Select the plots based on the Species richness threshold.
+      dplyr::filter(SR > Threshold)
+
+    # Compute and reorder the cophenetic distances
     Data.Diss <- cophenetic(Phylo_Tree)
     # Only keep the species that are present in the tree
     Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
     # Reorder the distance matrix
-    Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
+    Data.Diss <- Data.Diss[Sp_Names_Present, Sp_Names_Present]
 
-  # Compute the OBSERVED values
-  Alpha.Obs <- Alpha.Obs %>%
-    # Compute the MPD and MNTD Observed
-    mutate(MPD = picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
-    # Compute the mean nearest neighbour distance
-    mutate(MNTD = picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
-    # Remove the SR column
-    dplyr::select(!SR) %>%     
-    # Add the "Type" of the metric (OBS vs NM)
-    mutate(Type = "OBS")
+    # Compute the OBSERVED values
+    Alpha.Obs <- Alpha.Obs %>%
+      # Compute the MPD and MNTD Observed
+      mutate(MPD = picante::mpd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+      # Compute the mean nearest neighbour distance
+      mutate(MNTD = picante::mntd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+      # Remove the SR column
+      dplyr::select(!SR) %>%
+      # Add the "Type" of the metric (OBS vs NM)
+      mutate(Type = "OBS")
 
-  
-  # --- Compute the NULL MODEL values --- # 
-  Alpha.Null <- foreach(i = 1:3, .combine = full_join) %do% {
 
-    # Compute and reorder the cophenetic distances
-    Data.Diss <- cophenetic(Phylo_Tree_Null[[i]])
-    # Only keep the species that are present in the tree
-    Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
-    # Reorder the distance matrix
-    Data.Diss <- Data.Diss[Sp_Names_Present,Sp_Names_Present]
+    # --- Compute the NULL MODEL values --- #
 
-    # Compute the MPD
-    Alpha.NM <- Alpha.Obs %>%
-    # Compute the mean phylogenetic distance
-    mutate(MPD= picante::mpd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
-    # Compute the mean nearest neighbour distance
-    mutate(MNTD= picante::mntd(samp = .[,colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
-    # Add the "Type" of the metric (OBS vs NM)
-    mutate(Type = paste0("NM",i)) %>%
-    # Only select the wanted metrics
-    dplyr::select(any_of(c("Site_VDP","Site_Suisse","x","y","Type","MPD","MNTD"))) %>%
-    # Pivot longer the metrics
-    pivot_longer(cols = c(MPD,MNTD), values_to = "Value", names_to = "Metric")
+    Alpha.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+      # Compute and reorder the cophenetic distances
+      Data.Diss <- cophenetic(Phylo_Tree_Null[[i]])
+      # Only keep the species that are present in the tree
+      Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
+      # Reorder the distance matrix
+      Data.Diss <- Data.Diss[Sp_Names_Present, Sp_Names_Present]
 
-    # return
-    return(Alpha.NM)
+      # Compute the MPD
+      Alpha.NM <- Alpha.Obs %>%
+        # Compute the mean phylogenetic distance
+        mutate(MPD = picante::mpd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+        # Compute the mean nearest neighbour distance
+        mutate(MNTD = picante::mntd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
+        # Add the "Type" of the metric (OBS vs NM)
+        mutate(Type = paste0("NM", i)) %>%
+        # Only select the wanted metrics
+        dplyr::select(any_of(c("Site_VDP", "Site_Suisse", "x", "y", "Type", "MPD", "MNTD"))) %>%
+        # Pivot longer the metrics
+        pivot_longer(cols = c(MPD, MNTD), values_to = "Value", names_to = "Metric")
 
-  } # End of Null Models
+      # return
+      return(Alpha.NM)
+      
+    } # End of Null Models
 
     # Combine Observed and Null Results
 
     Alpha.Obs <- Alpha.Obs %>%
-    # Pivot longer the metrics
-    pivot_longer(cols = c(MPD,MNTD), values_to = "Value", names_to = "Metric")
+      # Pivot longer the metrics
+      pivot_longer(cols = c(MPD, MNTD), values_to = "Value", names_to = "Metric")
 
-    Alpha.Null.Complete <- full_join(Alpha.Obs,Alpha.Null) %>%
-    # Relocate the wanted columns.
-    relocate(any_of(c("Type","Metric","Value")), .after = y)
+    Alpha.Null.Complete <- full_join(Alpha.Obs, Alpha.Null) %>%
+      # Relocate the wanted columns.
+      relocate(any_of(c("Type", "Metric", "Value")), .after = y)
+
+    # Add the environnmental variables
+    Alpha.Null.Complete <- left_join(Alpha.Null.Complete,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
+
+
+  } # !! End of Alpha Phylogenetic Null Model Computation
+
+  { # !! Beta Phylogenetic Null Model Computation
+
+  # Add the rowname as a column to keep this info
+  Beta.Obs <- Data %>%
+    # Create a "Plot" column
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric) %>%
+    # Select only the occurence data
+    dplyr::select(any_of(Sp_Names)) %>%
+    # Transpose the data for the analysis
+    t() %>%
+    # Add the colnames as the plot numbers
+    `colnames<-`(1:ncol(.))
+
+  # Get the Metadata
+  MetaData <- Data %>%
+    # Create a "Plot" column
+    rownames_to_column(var = "Plot") %>%
+    mutate_at("Plot", as.numeric) %>% 
+    # Select only the Metadata (based on the species names )
+    dplyr::select(!any_of(c(Sp_Names)))
+
+# -- Compute the OBSERVED PIst metrics -- # 
+
+  Hardy_Metrics <- spacodiR::spacodi.calc(
+      sp.plot = Beta.Obs,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
+      phy = Phylo_Tree,             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
+      all.together = TRUE,     # whether to treat all traits together or separately
+      prune = TRUE,
+      pairwise = TRUE)
+
+# -- Extract all Metrics -- #
   
-  # -- END OF NULL MODEL COMPUTATION -- # 
+  ## PST ##
 
-  # ------------------------------------------------ #
+Pst <- Hardy_Metrics$pairwise.Pst %>% 
+  # Change colnames and rownames to be a simple number (and not "plt.X")
+  `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+  `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+  # Transform the pairwise 
+  PW_to_Vector(Colname = "Pst") %>%
+  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
+  # Join the metadata for both plots used in the pairwise computation. 
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
+  # Add the "Type" of the metric (OBS vs NM)
+  mutate(Type = "OBS") 
+
+  ## PIST ##
+
+PIst <- Hardy_Metrics$pairwise.PIst %>% 
+  # Change colnames and rownames to be a simple number (and not "plt.X")
+  `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+  `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+  # Transform the pairwise 
+  PW_to_Vector(Colname = "PIst") %>%
+  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
+  # Join the metadata for both plots used in the pairwise computation. 
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
+    
+# --- Combine the three altogether and pivot longer the metrics --- # 
+
+  # There is no use of Bst here because we have only occurrence data.
+
+Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
+  # Pivot the metrics
+  pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
+  # Relocate columns
+  dplyr::select(order(colnames(.))) %>%
+  relocate(any_of(c("Metric","Value")),.before = 1) %>%
+  relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
+
+} # !! End of Phylogenetic Beta Computation
+
+
+
+  } # !! End of Beta Phylogenetic Null Model Computation
+
+
+
+
+
 
   # Return the plots created
   return(list(F1.Alpha.Summary,Alpha.scatter,Alpha.boxplots,Beta_Boxplot_StripeDistance,Beta_Boxplot_Intra,Correlation.results))
