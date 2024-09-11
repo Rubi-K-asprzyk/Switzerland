@@ -13,6 +13,8 @@ cat(rule(left = "INITIALISATION", line_col = "green", line = "-", col = "br_gree
 ##### INITIALISATION #####
 #------------------------#
 
+# TO DO: Save les NM. 
+
 { # !! Initialisation
 
 # Set Working Directory
@@ -745,7 +747,9 @@ model_means_cld <- cld(object = model_means,
     # - Add the complete 3D-distance between the two plots (delta_xyz) - #
     mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
     # Pivot longer the metrics
-    pivot_longer(cols = any_of(c("beta.sim","beta.sne","beta.sor","beta.jtu","beta.jne","Beta.jac")), values_to = "Value", names_to = "Metric")
+    pivot_longer(cols = any_of(c("beta.sim","beta.sne","beta.sor","beta.jtu","beta.jne","Beta.jac")), values_to = "Value", names_to = "Metric") %>%
+    # Mutate the type of metric, "OBS vs NM"
+    mutate(Type = "OBS")
 
   } # !! End of Taxonomic Beta Computation
 
@@ -801,20 +805,8 @@ PIst <- Hardy_format(Hardy.result = Hardy_Metrics$pairwise.PIst, Name = "PIst")
 Phylo.beta.Obs <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Pivot the metrics
   pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
-  mutate_at(c("PlotA", "PlotB"), as.numeric) %>%
-  # Join the metadata for both plots used in the pairwise computation.
-  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
-  # - Add the absolute difference of altitude between the two plots (delta_z) - #
-  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
-  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
-  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
-  # Relocate columns
-  dplyr::select(order(colnames(.))) %>%
   # Mutate the type of metric, "OBS vs NM"
-  mutate(Type = "OBS") %>%
-  relocate(any_of(c("Metric","Value","Type")),.before = 1) %>%
-  relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
+  mutate(Type = "OBS")
 
    # --- Compute the NULL MODEL values --- #
 
@@ -822,7 +814,7 @@ Phylo.beta.Obs <- purrr::reduce(list(Pst,PIst),full_join) %>%
 
       # function(x,y){full_join(x,y, by = join_by(Site_VDP, Site_Suisse, x, y, Type, Metric, Value))}
 
-    Beta.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+Phylo.beta.Null <- foreach(i = 1:3, .combine = full_join) %do% {
 
   # -- Compute the PIst metrics -- # 
 
@@ -854,17 +846,17 @@ Phylo.beta.Null <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Return the NM values
   return(Phylo.beta.Null)
 
-  } # End of Beta Null
+ } # End of Beta Null
 
-} # !! End of Phylogenetic Beta Computation
+  # Combine Observed And Null Model results
+  Phylo.beta <- full_join(Phylo.beta.Obs,Phylo.beta.Null) 
 
-
-
-%>%
+  # Add the environnemental Data
+  Phylo.beta <- Phylo.beta %>%
   mutate_at(c("PlotA", "PlotB"), as.numeric) %>%
   # Join the metadata for both plots used in the pairwise computation.
-  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
+  left_join(MetaData, c("PlotA" = "Plot", "Type")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot", "Type"), suffix = c("_A", "_B")) %>%# Plot B + add suffixes "A" and "B" to distinguish the two plots.
   # - Add the absolute difference of altitude between the two plots (delta_z) - #
   mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
   # - Add the complete 3D-distance between the two plots (delta_xyz) - #
@@ -872,11 +864,10 @@ Phylo.beta.Null <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Relocate columns
   dplyr::select(order(colnames(.))) %>%
   # Mutate the type of metric, "OBS vs NM"
-  mutate(Type = "OBS") %>%
   relocate(any_of(c("Metric","Value","Type")),.before = 1) %>%
   relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
-  # ------------- #
+    # ------------- #
 
   # Combine the taxonomic and phylogenetic beta results
 
@@ -885,6 +876,14 @@ Phylo.beta.Null <- purrr::reduce(list(Pst,PIst),full_join) %>%
     mutate(Range_Number_AB = paste0(Range_Number_A,"-",Range_Number_B)) %>%
     # Create a column that is the stripe distance between the two plots.
     mutate(Range_Number_Distance = as.factor(abs(as.numeric(Range_Number_A)-as.numeric(Range_Number_B))))
+
+
+} # !! End of Phylogenetic Beta Computation
+
+  # Creation of a dataset with only observed values
+  Beta.results.Obs <- Beta.results %>%
+    # Filter the observed values
+    filter(Type == "OBS")
 
   # ------------- #
 
@@ -895,7 +894,7 @@ Phylo.beta.Null <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Boxplots of the metrics based on the stripe distance between the two plots used for the computation. 
 
 # Realization of an ANOVA of the metrics values ~  Range_Number_Distance * Metric
-anova <- aov(Value ~ Range_Number_Distance * Metric, data = Beta.results)
+anova <- aov(Value ~ Range_Number_Distance * Metric, data = Beta.results.Obs)
 
 # Get (adjusted) means to have results groupes by metrics.
 model_means <- emmeans(object = anova,
@@ -907,23 +906,28 @@ model_means_cld <- cld(object = model_means,
                        Letters = letters,
                        alpha = 0.05)
 
-# Draw the plot
-Beta_Boxplot_StripeDistance <- ggplot(model_means_cld, aes(x = Range_Number_Distance, y = emmean)) + 
-  # Draw the bar
-    geom_boxplot(data = model_means_cld, stat = "identity", aes(
-    x = Range_Number_Distance,
-    lower = emmean - SE,
-    middle = emmean, 
-    upper = emmean + SE,
-    ymin = lower.CL,
-    ymax = upper.CL,
-    fill = Range_Number_Distance), show.legend = FALSE) +
+# Compute the boxplots stats to have access to the upper hinge value.
+  Beta.Stats.boxplots <- Beta.results.Obs %>% 
+  # Group_by
+  group_by(Range_Number_Distance,Metric) %>%
+  # Extract the values
+  summarise(as_tibble_row(quantile(Value), .name_repair = \(x) paste0('q', parse_number(x)))) 
+
+  # Combine the model and the stats to use them altogether
+  Labels <- full_join(model_means_cld,Beta.Stats.boxplots)
+
+  # Draw the Boxplots
+  Beta_Boxplot_StripeDistance <- Beta.results.Obs %>% 
+  # Aes
+  ggplot(aes(x = Range_Number_Distance, y = Value, fill = Range_Number_Distance)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_boxplot(outlier.shape = NA) +
+  # Facet the plot
+  ggh4x::facet_grid2(. ~ Metric, scales = "free_y", independent = "y") +
   # Add the letter
-  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02* upper.CL)), vjust = -0.5) +
-  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
-  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
-  # Facet_wrap
-  facet_wrap(~Metric, scales = "free") + 
+  geom_label(data = Labels, aes(label = toupper(str_trim(.group)), y = q75, fontface = "bold"), alpha = 0.7, vjust = -0.5) +
+  # Theme
+  # theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
   # Labs
   labs(title ="Metrics summary ~ Range_Number_Distance.",
     subtitle = "Separatedly per Metric, Metric means computed by stripes distance between the two plots used for the computation. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
@@ -936,13 +940,20 @@ Beta_Boxplot_StripeDistance <- ggplot(model_means_cld, aes(x = Range_Number_Dist
 
 # Create the data frame
 
-Beta.results.intra <- Beta.results %>%
+Beta.results.intra <- Beta.results.Obs %>%
   # Filter the dataset to only keep the pairwise plots from the same stripe
   dplyr::filter(Range_Number_A == Range_Number_B) %>%
   dplyr::filter(PlotA != PlotB) %>%
   mutate_at("Range_Number_AB", as.character) %>%
   # Reorder the stripes to have 10-10 effectively last
   mutate(Range_Number_AB = fct_relevel(Range_Number_AB,mixedsort(unique(.$Range_Number_AB))))
+
+# Compute the boxplots stats to have access to the upper hinge value.
+Beta.Stats.boxplots <- Beta.results.intra %>% 
+  # Group_by
+  group_by(Range_Number_AB,Metric) %>%
+  # Extract the values
+  summarise(as_tibble_row(quantile(Value), .name_repair = \(x) paste0('q', parse_number(x)))) 
 
 # Realization of an ANOVA of the metrics values ~  Range_Number_Distance * Metric
 anova <- aov(Value ~ Range_Number_AB * Metric, data = Beta.results.intra)
@@ -957,28 +968,67 @@ model_means_cld <- cld(object = model_means,
                        Letters = letters,
                        alpha = 0.05)
 
-# Draw the plot
-Beta_Boxplot_Intra <- ggplot(model_means_cld, aes(x = Range_Number_AB, y = emmean)) + 
-  # Draw the bar
-    geom_boxplot(data = model_means_cld, stat = "identity", aes(
-    x = Range_Number_AB,
-    lower = emmean - SE,
-    middle = emmean, 
-    upper = emmean + SE,
-    ymin = lower.CL,
-    ymax = upper.CL,
-    fill = Range_Number_AB), show.legend = FALSE) +
+# Combine the model and the stats to use them altogether
+Labels <- full_join(model_means_cld,Beta.Stats.boxplots)
+
+
+
+
+  # Draw the Boxplots
+  Beta_Boxplot_Intra <- Beta.results.intra %>% 
+  # Aes
+  ggplot(aes(x = Range_Number_AB, y = Value, fill = Range_Number_AB)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_boxplot(outlier.shape = NA) +
+  # Facet the plot
+  ggh4x::facet_grid2(. ~ Metric, scales = "free_y", independent = "y") +
   # Add the letter
-  geom_text(data = model_means_cld, aes(label = str_trim(.group), y = upper.CL + (0.02* upper.CL)), vjust = -0.5) +
-  # /!\ For now, the errorbar doesn't work because the Sd is computed with ALL the data, not the grouped data. 
-  # geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), width = 0.2) +
-  # Facet_wrap
-  facet_wrap(~Metric, scales = "free") + 
+  geom_label(data = Labels, aes(label = toupper(str_trim(.group)), y = q75, fontface = "bold"), alpha = 0.7, vjust = -0.5) +
+  # Theme
+  # theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
   # Labs
   labs(title ="Metrics summary ~ Range_Number.",
     subtitle = "Separatedly per Metric, Metric means computed between two plots from the same stripe. For each sub-plot, bars topped by a common letter are not significantly different according to the Tukey-test")
 
   } # !! End of Figure 5
+
+
+  { # !! FIGURE 6: Boxplots of Null-Models ~ Altitudinal stripes - # 
+
+  Beta.results.intra <- Beta.results %>%
+  # Filter the dataset to only keep the pairwise plots from the same stripe
+  dplyr::filter(Range_Number_A == Range_Number_B) %>%
+  dplyr::filter(PlotA != PlotB) %>%
+  mutate_at("Range_Number_AB", as.character) %>%
+  # Reorder the stripes to have 10-10 effectively last
+  mutate(Range_Number_AB = fct_relevel(Range_Number_AB,mixedsort(unique(.$Range_Number_AB))))
+
+  # Draw the Boxplots
+  Beta.NM.boxplots <- Beta.results.intra %>% 
+  # Filter only for the Observed Values
+  dplyr::filter(Metric %in% c("PST","PIst")) %>%
+  # Aes
+  ggplot(aes(x = Range_Number_AB, y = Value, fill = Type)) + # Reorder the factors correctly
+  # Plot all the values
+  geom_boxplot(outlier.shape = NA) +
+  # Facet the plot
+  ggh4x::facet_grid2(. ~ Metric, scales = "free_y", independent = "y") +
+  # 
+      stat_compare_means(
+        label = "p.signif",
+        method = "wilcox.test",
+        symnum.args = list(
+          cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1),
+          symbols = c("****", "***", "**", "*", "ns")
+        )
+      ) + 
+  # Theme
+  theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  # Labs
+  labs(title =" Observed VS NullModel Metrics ~ Altitudinal ranges entered.",
+    subtitle = "Separatedly per Metric and Range Intervals, Wilcoxon tests of Observed VS NullModel Values") 
+
+  } # !! End of Figure 4
 
   #-------------------------------#
   ##### MANTEL + PEARSON TEST #####
