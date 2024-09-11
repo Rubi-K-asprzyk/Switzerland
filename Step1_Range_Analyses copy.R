@@ -46,7 +46,8 @@ p_load(doParallel, # Allow parallel computation
        gridExtra,
        ggplotify,
        data.table,
-       ggh4x)
+       ggh4x,
+       readr)
 
 # Set the parallel backend
 registerDoParallel(cores=2)
@@ -162,6 +163,31 @@ arrange_theme <- function() {
 
 # Message
 cat(rule(left = "- Theme set - ", line_col = "white", line = " ", col = "green"))
+
+  #### . Custom Function . ##### 
+
+# Create a function to format pariwise results from Hardy Metrics
+  # ARGUMENTS:
+  # - Hardy.result: A pairwise result from SpacodiR
+  # - Name: The name of the metric
+
+Hardy_format <- function(Hardy.result, Name) {
+
+  Metric <- Hardy.result %>%
+    # Change colnames and rownames to be a simple number (and not "plt.X")
+    `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+    `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
+    # Transform the pairwise
+    PW_to_Vector(Colname = Name)
+    # mutate_at(c("PlotA", "PlotB"), as.numeric) 
+    # # Join the metadata for both plots used in the pairwise computation.
+    # left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+    # left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
+    # # - Add the absolute difference of altitude between the two plots (delta_z) - #
+    # mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+    # # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+    # mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
+}
 
   #### . Data Preparation . ##### 
 
@@ -288,17 +314,19 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
 
     # --- Compute the NULL MODEL values --- #
 
-    Alpha.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+      # /!\ .combine uses a custom function with "x" the previous iteration and "y" the new iteration. It is used to give the "by" argument without display message and clutter the console.
+
+    Alpha.Null <- foreach(i = 1:3, .combine = function(x,y){full_join(x,y, by = join_by(Site_VDP, Site_Suisse, x, y, Type, Metric, Value))}) %do% {
 
       # Compute and reorder the cophenetic distances
       Data.Diss <- cophenetic(Phylo_Tree_Null[[i]])
-      # Only keep the species that are present in the tree
+      # Only keep the species that are present in the treehttps://www.twitch.tv/solaryhs
       Sp_Names_Present <- Sp_Names[Sp_Names %in% colnames(Data.Diss)]
       # Reorder the distance matrix
       Data.Diss <- Data.Diss[Sp_Names_Present, Sp_Names_Present]
 
       # Compute the MPD
-      Alpha.NM <- Data.filtered %>%
+      Alpha.NM <- Data %>%
         # Compute the mean phylogenetic distance
         mutate(MPD = picante::mpd(samp = .[, colnames(Data.Diss)], dis = Data.Diss), .after = y) %>%
         # Compute the mean nearest neighbour distance
@@ -321,7 +349,7 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
     # Pivot longer the metrics
       pivot_longer(cols = c(SR,GS,PD,MPD,MNTD), values_to = "Value", names_to = "Metric")
 
-    Data.filtered <- full_join(Alpha.Obs, Alpha.Null) %>%
+    Data.filtered <- full_join(Alpha.Obs, Alpha.Null, by = join_by(Site_VDP, Site_Suisse, x, y, Type, Metric, Value)) %>%
       # Relocate the wanted columns.
       relocate(any_of(c("Type", "Metric", "Value")), .after = y) %>%
       # Remove the Number contained in the "Type" column.
@@ -331,13 +359,13 @@ range_analyses <- function(Data, Sp_Names, Threshold,Phylo_Tree,Phylo_Tree_Null,
   # Message
   cat(rule(left = paste0("- Data filtered based on species richness / THRESHOLD = ",Threshold," - "), line_col = "white", line = " ", col = "green"))
   cat(paste0(" - Number of initial plots: ",length(unique(Data$Site_VDP))," -\n"))
-  cat(paste0(" - Number of plot left: ",length(unique(Data.filtered$Site_VDP))," -\n"))
-  cat(paste0(" - Number of plot eliminated: ",(length(unique(Data$Site_VDP)) - length(unique(Data.filtered$Site_VDP)))," -\n"))
+  cat(paste0(" - Number of plot left: ",length(unique(Alpha.Obs$Site_VDP))," -\n"))
+  cat(paste0(" - Number of plot eliminated: ",(length(unique(Data$Site_VDP)) - length(unique(Alpha.Obs$Site_VDP)))," -\n"))
 
   # ----- ENVIRONMENTAL DATA MERGING ----- #####
 
   # Joining of the environmental data and move the z column
-  Data.filtered <- left_join(Data.filtered,bryoEnv) %>% relocate(z,Metric,Value,.after = y)
+  Data.filtered <- left_join(Data.filtered,bryoEnv, by = join_by(Site_VDP, Site_Suisse, x, y)) %>% relocate(z,Metric,Value,.after = y)
 
   } # !! End of Alpha Metric Computation
 
@@ -476,8 +504,8 @@ Alpha.summary.unsplitted <- Data.filtered %>%
   labs(subtitle = "Metrics summary total.\nn = Number of plots.")
 
 # Combination of both plots together.
-F1.Alpha.Summary <- (Alpha.summary | Alpha.summary.unsplitted) + plot_layout(widths = c(2, 1))
-F1.Alpha.Summary <- as.grob(F1.Alpha.Summary)
+F1.Alpha.Summary <- as.ggplot(ggarrange(
+  Alpha.summary,Alpha.summary.unsplitted,common.legend = T, legend = "right",widths = c(2, 1)))
 
   } # !! End of Figure 1
 
@@ -628,15 +656,13 @@ model_means_cld <- cld(object = model_means,
           symbols = c("****", "***", "**", "*", "ns")
         )
       ) + 
-  # Add the letter
   # Theme
   theme(axis.text.x=element_text(angle = 90, hjust = 0, vjust = 0.5)) +
   # Labs
   labs(title =" Observed VS NullModel Metrics ~ Altitudinal ranges entered.",
-    subtitle = "Separatedly per Metric and Range Intervals, Wilcoxon tests of Observed VS NullModel Values")  ; Alpha.NM.boxplots
+    subtitle = "Separatedly per Metric and Range Intervals, Wilcoxon tests of Observed VS NullModel Values") 
 
   } # !! End of Figure 4
-
 
   #------------------------------#
   ##### BETA METRICS ANALYSES ####
@@ -646,6 +672,8 @@ model_means_cld <- cld(object = model_means,
 
   # Add the rowname as a column to keep this info
   Beta.Data <- Data.filtered %>%
+    # Remove all "NM" values
+    filter(Type == "OBS") %>%
     # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
     pivot_wider(names_from = Metric, values_from = Value) %>%
     # Create a "Plot" column
@@ -727,7 +755,9 @@ model_means_cld <- cld(object = model_means,
 
   # Add the rowname as a column to keep this info
   Beta.Data <- Data.filtered %>%
-      # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
+    # Remove all "NM" values
+    filter(Type == "OBS") %>%
+    # Pivot back the Alpha metrics computed to remove them (Or all the lines will be multiplied)
     pivot_wider(names_from = Metric, values_from = Value) %>%
     # Create a "Plot" column
     rownames_to_column(var = "Plot") %>%
@@ -760,51 +790,91 @@ model_means_cld <- cld(object = model_means,
   
   ## PST ##
 
-Pst <- Hardy_Metrics$pairwise.Pst %>% 
-  # Change colnames and rownames to be a simple number (and not "plt.X")
-  `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  # Transform the pairwise 
-  PW_to_Vector(Colname = "Pst") %>%
-  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Join the metadata for both plots used in the pairwise computation. 
-  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
-  # - Add the absolute difference of altitude between the two plots (delta_z) - #
-  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
-  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
-  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) 
+Pst <- Hardy_format(Hardy.result = Hardy_Metrics$pairwise.Pst, Name = "Pst") 
 
   ## PIST ##
 
-PIst <- Hardy_Metrics$pairwise.PIst %>% 
-  # Change colnames and rownames to be a simple number (and not "plt.X")
-  `colnames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  `rownames<-`(sub(x = rownames(.), pattern = "plt.", replacement = "")) %>%
-  # Transform the pairwise 
-  PW_to_Vector(Colname = "PIst") %>%
-  mutate_at(c("PlotA","PlotB"), as.numeric) %>%
-  # Join the metadata for both plots used in the pairwise computation. 
-  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
-  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots. 
-  # - Add the absolute difference of altitude between the two plots (delta_z) - #
-  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
-  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
-  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z)
+PIst <- Hardy_format(Hardy.result = Hardy_Metrics$pairwise.PIst, Name = "PIst") 
     
 # --- Combine the three altogether and pivot longer the metrics --- # 
 
-  # There is no use of Bst here because we have only occurrence data.
-
-Phylo.beta <- purrr::reduce(list(Pst,PIst),full_join) %>%
+Phylo.beta.Obs <- purrr::reduce(list(Pst,PIst),full_join) %>%
   # Pivot the metrics
   pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
+  mutate_at(c("PlotA", "PlotB"), as.numeric) %>%
+  # Join the metadata for both plots used in the pairwise computation.
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
   # Relocate columns
   dplyr::select(order(colnames(.))) %>%
-  relocate(any_of(c("Metric","Value")),.before = 1) %>%
+  # Mutate the type of metric, "OBS vs NM"
+  mutate(Type = "OBS") %>%
+  relocate(any_of(c("Metric","Value","Type")),.before = 1) %>%
   relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
+   # --- Compute the NULL MODEL values --- #
+
+      # /!\ .combine uses a custom function with "x" the previous iteration and "y" the new iteration. It is used to give the "by" argument without display message and clutter the console.
+
+      # function(x,y){full_join(x,y, by = join_by(Site_VDP, Site_Suisse, x, y, Type, Metric, Value))}
+
+    Beta.Null <- foreach(i = 1:3, .combine = full_join) %do% {
+
+  # -- Compute the PIst metrics -- # 
+
+  Hardy_Metrics <- spacodiR::spacodi.calc(
+      sp.plot = Beta.Data,         # sp.plot =  a community dataset in spacodiR format (see as.spacodi) i.e species in rows and plots in columns
+      phy = Phylo_Tree_Null[[i]],             # phy a phylogenetic tree of class phylo or evolutionary distance matrix between species (see cophenetic.phylo)                   # sp.traits a species-by-trait(s) dataframe or a species traits distance matrix (see dist)
+      all.together = TRUE,     # whether to treat all traits together or separately
+      prune = TRUE,
+      pairwise = TRUE)
+
+# -- Extract all Metrics -- #
+  
+  ## PST ##
+
+Pst <- Hardy_format(Hardy.result = Hardy_Metrics$pairwise.Pst, Name = "Pst") 
+
+  ## PIST ##
+
+PIst <- Hardy_format(Hardy.result = Hardy_Metrics$pairwise.PIst, Name = "PIst") 
+    
+# --- Combine the three altogether and pivot longer the metrics --- # 
+
+Phylo.beta.Null <- purrr::reduce(list(Pst,PIst),full_join) %>%
+  # Pivot the metrics
+  pivot_longer(cols = c(Pst,PIst), values_to = "Value", names_to = "Metric") %>%
+  # Mutate the type of metric, "OBS vs NM"
+  mutate(Type = "NM")
+
+  # Return the NM values
+  return(Phylo.beta.Null)
+
+  } # End of Beta Null
+
 } # !! End of Phylogenetic Beta Computation
+
+
+
+%>%
+  mutate_at(c("PlotA", "PlotB"), as.numeric) %>%
+  # Join the metadata for both plots used in the pairwise computation.
+  left_join(MetaData, c("PlotA" = "Plot")) %>% # Plot A
+  left_join(MetaData, c("PlotB" = "Plot"), suffix = c("_A", "_B")) %>% # Plot B + add suffixes "A" and "B" to distinguish the two plots.
+  # - Add the absolute difference of altitude between the two plots (delta_z) - #
+  mutate(delta_z = abs(z_A - z_B), .after = z_B) %>%
+  # - Add the complete 3D-distance between the two plots (delta_xyz) - #
+  mutate(delta_xyz = sqrt((x_B - x_A)^2 + (y_B - y_A)^2 + (z_B - z_A)^2), .after = delta_z) %>%
+  # Relocate columns
+  dplyr::select(order(colnames(.))) %>%
+  # Mutate the type of metric, "OBS vs NM"
+  mutate(Type = "OBS") %>%
+  relocate(any_of(c("Metric","Value","Type")),.before = 1) %>%
+  relocate(any_of(c("delta_z","delta_xyz")),.after = z_B)
 
   # ------------- #
 
